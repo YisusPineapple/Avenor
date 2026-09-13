@@ -1,11 +1,19 @@
-<div align="center">
+# Nexo Audio
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Nexo Audio is an ultra-lightweight, pro-audio local music player built natively on Android using Jetpack Compose and ExoPlayer.
 
-  <h1>Built with AI Studio</h2>
+## Pitch & Features
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- **Ultra-Lightweight:** Strictly designed to consume less than 120MB RAM on Android and 250MB on Desktop. Features ECO and VIVID performance scaling depending on device capabilities.
+- **100% Offline & Private:** No tracking, no cloud sync, no accounts. Your music, your device. Data is persisted purely via local SQLite (Room).
+- **Pro Audio Engine:** Built on ExoPlayer for Gapless playback, Constant-Power Crossfade, AutoMix, and ReplayGain support.
+- **Format Support:** MP3, FLAC, AAC, Opus, Vorbis, WAV, EAC3, AC4, ALAC, and more.
+- **Adaptive Warmth UI:** A gorgeous Material You interface with a warm terracotta/cream palette that adapts to your device's performance. Features dynamic scaling for Desktop layouts.
+- **Advanced Library Management:** Multiple artist delimiters, folder exclusion, and smart playlists logic built in.
+- **Nexo "For You":** On-device, offline generation of Daily Mixes and listening statistics based on actual tracked metrics (time of day, skip tracking).
+- **Nexo Recap Export:** High-resolution generated daily recap cards to share to desktop or mobile targets.
+- **Lyrics Sync Offset:** Manually synchronize delayed or advanced lyrics per-song with the built-in `LrcSyncEditor`. Saved permanently in the local database.
+- **Desktop Gestures:** Trackpad swiping, mouse wheel inputs, and KeyEventHandler for spacebar/arrow key navigation on desktop environments.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Setup
+Just load local music onto your device and grant storage permissions!

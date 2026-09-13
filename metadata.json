@@ -1,0 +1,8 @@
+{
+  "name": "Avenor",
+  "description": "Avenor is a premium, cross-platform local music player featuring an expressive Material 3 UI, advanced hardware-accelerated crossfading, and intelligent SmartTrash management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

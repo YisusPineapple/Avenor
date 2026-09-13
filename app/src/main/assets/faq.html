@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexo Optimization Guide</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #bb86fc;
+            --secondary-color: #03dac6;
+            --text-color: #e0e0e0;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: var(--primary-color); font-size: 24px; border-bottom: 2px solid var(--surface-color); padding-bottom: 10px; }
+        h2 { color: var(--secondary-color); font-size: 18px; margin-top: 25px; }
+        p { font-size: 15px; }
+        .card {
+            background-color: var(--surface-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 8px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1>Nexo Optimization FAQ</h1>
+    <p>Welcome to the offline Nexo Help & FAQ page. Nexo is built to run flawlessly on everything from legacy dual-core processors to modern flagships. Follow these tips to optimize your experience on resource-constrained devices.</p>
+
+    <div class="card">
+        <h2>🚀 Performance Presets</h2>
+        <p>Nexo includes an automated Performance Benchmark on startup, but you can override it:</p>
+        <ul>
+            <li><b>ECO Mode:</b> Disables all background animations, procedural shaders, and background drawing. Use this if your phone has less than 2GB of RAM.</li>
+            <li><b>BALANCED:</b> Enables basic UI transitions but keeps heavy graphics caching active.</li>
+            <li><b>VIVID:</b> Full fluid animations, rotating background effects, and highest refresh rate. Recommended for 4GB+ RAM.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>🧹 Clearing Background Processes</h2>
+        <p>Audio processing (Equalizer, AutoMix, Crossfade) requires uninterrupted CPU time. On dual-core or heavy-load devices:</p>
+        <ul>
+            <li>Clear recent apps before extended listening sessions.</li>
+            <li>Disable aggressive battery savers for Nexo, as they can kill the background playback service (Media3).</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>💾 Disk Usage & Storage</h2>
+        <p>Nexo uses an embedded SQLite database (Room) for high-performance offline metadata caching.</p>
+        <ul>
+            <li>The database automatically runs a <code>VACUUM</code> operation if it exceeds 5MB to prevent storage controller fragmentation.</li>
+            <li>No cloud telemetry or tracking data is stored. Your footprint stays strictly minimal.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>🎛️ Equalizer & Crossfade</h2>
+        <p>Our custom DSP tools are built for low-latency:</p>
+        <ul>
+            <li><b>Crossfade:</b> Operates completely off the main UI thread. If a CPU stall is detected (e.g., thermal throttling), it snaps to volume targets to prevent audio tearing.</li>
+            <li><b>Auto-EQ:</b> Relies purely on ID3 tags (Offline Metadata). No network requests are made.</li>
+        </ul>
+    </div>
+</body>
+</html>
