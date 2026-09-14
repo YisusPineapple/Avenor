@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/nexo.iml" filepath="$PROJECT_DIR$/nexo.iml" />
-      <module fileurl="file://$PROJECT_DIR$/android/nexo_android.iml" filepath="$PROJECT_DIR$/android/nexo_android.iml" />
+      <module fileurl="file://$PROJECT_DIR$/avenor.iml" filepath="$PROJECT_DIR$/avenor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/android/avenor_android.iml" filepath="$PROJECT_DIR$/android/avenor_android.iml" />
     </modules>
   </component>
 </project>

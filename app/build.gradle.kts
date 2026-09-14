@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.yisus.nexo"
+    namespace = "io.github.yisus.avenor"
     compileSdk = 35
 
     defaultConfig {

@@ -1,5 +1,5 @@
 {
-  "name": "Nexo (Flutter/Dart)",
+  "name": "Avenor (Flutter/Dart)",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
     "ghcr.io/devcontainers-community/features/flutter:1": {}
