@@ -26,7 +26,7 @@ jobs:
 
       # Offload build workloads without a powerful local machine by using Gradle parallel limits
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --max-workers=2 -Pkotlin.daemon.jvm.options="-Xmx2048M"
+        run: ./gradlew assembleDebug --no-daemon --max-workers=2 -Pkotlin.daemon.jvm.options="-Xmx2048M"
         
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -51,7 +51,7 @@ jobs:
           cache: gradle
           
       - name: Build Release APK
-        run: gradle assembleRelease --no-daemon --max-workers=2
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2
         
       # To enable automated signing, uncomment and configure the following step:
       # - name: Sign APK
