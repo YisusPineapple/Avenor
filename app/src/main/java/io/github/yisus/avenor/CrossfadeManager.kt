@@ -1,5 +1,7 @@
 package io.github.yisus.avenor
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.os.Handler
@@ -9,6 +11,9 @@ import android.view.animation.LinearInterpolator
 import android.widget.Toast
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Handles crossfade (volume fading) between track transitions using Hardware-Accelerated ValueAnimator.
@@ -19,6 +24,9 @@ class CrossfadeManager(private val player: ExoPlayer, private val context: Conte
     private var fadeAnimator: ValueAnimator? = null
     private val baseCrossfadeDurationMs = 3000L // 3 seconds
     private val handler = Handler(Looper.getMainLooper())
+
+    private val _isCrossfading = MutableStateFlow(false)
+    val isCrossfading: StateFlow<Boolean> = _isCrossfading.asStateFlow()
 
     init {
         player.addListener(object : Player.Listener {
@@ -36,25 +44,35 @@ class CrossfadeManager(private val player: ExoPlayer, private val context: Conte
             // Blindaje contra errores del reproductor durante el crossfade
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e(TAG, "Player Error during Crossfade: ${error.message}")
-                fadeAnimator?.cancel()
-                player.volume = 1f // Reset volume to ensure it's not stuck at 0
+                cancelAndReset()
             }
         })
+    }
+    
+    private fun cancelAndReset() {
+        fadeAnimator?.cancel()
+        player.volume = 1f // Reset volume to ensure it's not stuck at 0
+        AutoMixState.setCrossfading(false)
     }
 
     fun manualSkip(forward: Boolean) {
         handler.post {
             fadeAnimator?.cancel()
+            AutoMixState.setCrossfading(true)
             
             // Fast fade out (500ms)
             fadeAnimator = ValueAnimator.ofFloat(player.volume, 0f).apply {
                 duration = 500
                 interpolator = LinearInterpolator()
                 addUpdateListener { animation ->
-                    player.volume = animation.animatedValue as Float
+                    try {
+                        player.volume = animation.animatedValue as Float
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to set volume: ${e.message}")
+                    }
                 }
-                addListener(object : android.animation.AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
                         try {
                             if (forward && player.hasNextMediaItem()) {
                                 player.seekToNextMediaItem()
@@ -76,6 +94,7 @@ class CrossfadeManager(private val player: ExoPlayer, private val context: Conte
     private fun applyFadeIn(fromManual: Boolean = false) {
         handler.post {
             fadeAnimator?.cancel()
+            AutoMixState.setCrossfading(true)
             
             val tier = PerformanceBenchmark.evaluateDeviceTier(context)
             val scale = when(tier) {
@@ -98,13 +117,31 @@ class CrossfadeManager(private val player: ExoPlayer, private val context: Conte
 
             val duration = if (fromManual) (1000L * scale).toLong() else (baseCrossfadeDurationMs * scale).toLong()
             
-            player.volume = 0f
+            try {
+                player.volume = 0f
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting volume to 0: ${e.message}")
+            }
+            
             fadeAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                 this.duration = duration
                 interpolator = LinearInterpolator()
                 addUpdateListener { animation ->
-                    player.volume = animation.animatedValue as Float
+                    try {
+                        player.volume = animation.animatedValue as Float
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update volume during fade in: ${e.message}")
+                    }
                 }
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        AutoMixState.setCrossfading(false)
+                    }
+                    override fun onAnimationCancel(animation: Animator) {
+                        AutoMixState.setCrossfading(false)
+                        player.volume = 1f
+                    }
+                })
                 start()
             }
         }
@@ -112,7 +149,7 @@ class CrossfadeManager(private val player: ExoPlayer, private val context: Conte
 
     fun release() {
         handler.post {
-            fadeAnimator?.cancel()
+            cancelAndReset()
         }
     }
 }

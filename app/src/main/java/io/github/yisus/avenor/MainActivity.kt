@@ -1214,6 +1214,19 @@ fun NowPlayingScreen(viewModel: PlaybackViewModel, onNavigateToEq: () -> Unit, o
     val repeatMode by viewModel.repeatMode.collectAsState()
     val isSleepTimerActive by viewModel.sleepTimerActive.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState(initial = null)
+    val isCrossfading by AutoMixState.isCrossfading.collectAsState()
+    
+    // AutoMix pulsing animation
+    val infiniteTransition = rememberInfiniteTransition(label = "AutoMixPulse")
+    val automixAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AutoMixAlpha"
+    )
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var showLrcEditor by remember { mutableStateOf(false) }
 
@@ -1275,6 +1288,23 @@ fun NowPlayingScreen(viewModel: PlaybackViewModel, onNavigateToEq: () -> Unit, o
 
             // Text info
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // AutoMix Indicator
+                androidx.compose.animation.AnimatedVisibility(visible = isCrossfading) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = automixAlpha),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.GraphicEq, contentDescription = "AutoMix Active", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("AutoMix", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Text(currentSong?.title ?: "Unknown Title", style = if(style == "APPLE_MUSIC") MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                 Text(currentSong?.artist ?: "Unknown Artist", style = MaterialTheme.typography.titleMedium, color = if(style == "APPLE_MUSIC") MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary)
             }

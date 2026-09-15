@@ -14,3 +14,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Avenor"
 include(":app")
+
+include(":shared")
+include(":desktop")

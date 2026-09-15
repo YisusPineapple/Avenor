@@ -9,6 +9,9 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,6 +41,9 @@ jobs:
   # See the README.md for instructions on how to generate and configure the Keystore.
   build-release:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout repository
