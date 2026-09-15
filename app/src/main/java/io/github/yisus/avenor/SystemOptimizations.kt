@@ -85,7 +85,7 @@ suspend fun startMemoryWatchdog(context: Context) {
         if (usedMem > limit) {
             Log.d("MemoryWatchdog", "Memory exceeded 120MB (${usedMem / 1024 / 1024}MB), clearing caches.")
             context.imageLoader.memoryCache?.clear()
-            System.gc()
+            // System.gc() - Removed due to Android memory management anti-pattern
         }
         delay(5000) 
     }

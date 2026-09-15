@@ -59,7 +59,7 @@ jobs:
         continue-on-error: true
           
       - name: Build Release APK
-        run: ./gradlew assembleRelease --no-daemon --max-workers=2
+        run: bash -c "chmod +x gradlew && ./gradlew assembleRelease --no-daemon --max-workers=2" 
         
       # To enable automated signing, uncomment and configure the following step:
       # - name: Sign APK
@@ -117,7 +117,7 @@ jobs:
         run: chmod +x gradlew
         continue-on-error: true
       - name: Build Linux Package (DEB)
-        run: ./gradlew :desktop:packageDeb --no-daemon --max-workers=2
+        run: bash -c "chmod +x gradlew && ./gradlew :desktop:packageDeb --no-daemon --max-workers=2" 
       - name: Upload Linux DEB
         uses: actions/upload-artifact@v4
         with:
