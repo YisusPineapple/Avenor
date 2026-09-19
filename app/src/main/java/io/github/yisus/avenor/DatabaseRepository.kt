@@ -12,8 +12,40 @@ class DatabaseRepository(val dao: MusicDao) {
     val topSongs: Flow<List<Song>> = dao.getTopSongs()
     val topArtist: Flow<TopArtistResult?> = dao.getTopArtist()
     val totalListeningTimeMs: Flow<Long?> = dao.getTotalListeningTimeMs()
+    val favoriteSongs: Flow<List<Song>> = dao.getFavoriteSongs()
+    val favoriteSongIds: Flow<List<Long>> = dao.getAllFavoriteSongIds()
 
-    suspend fun syncLocalSongs(songs: List<Song>) = dao.insertSongs(songs)
+    fun isFavorite(songId: Long): Flow<Boolean> = dao.isFavorite(songId)
+    suspend fun isFavoriteSync(songId: Long): Boolean = dao.isFavoriteSync(songId)
+
+    suspend fun toggleFavorite(songId: Long): Boolean {
+        val isFav = dao.isFavoriteSync(songId)
+        if (isFav) {
+            dao.removeFavorite(songId)
+            return false
+        } else {
+            dao.addFavorite(Favorite(songId = songId))
+            return true
+        }
+    }
+
+    suspend fun reconcileSongs(currentStorageSongs: List<Song>) {
+        val existing = dao.getAllSongsSync()
+        val currentIds = currentStorageSongs.map { it.id }.toSet()
+        val toDelete = existing.filter { !currentIds.contains(it.id) }
+        toDelete.forEach { song ->
+            dao.deleteSong(song)
+        }
+        if (currentStorageSongs.isNotEmpty()) {
+            dao.insertSongs(currentStorageSongs)
+        }
+    }
+
+    suspend fun syncLocalSongs(songs: List<Song>) {
+        if (songs.isNotEmpty()) {
+            dao.insertSongs(songs)
+        }
+    }
     
     suspend fun recordPlay(songId: Long, skipped: Boolean = false): Long {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)

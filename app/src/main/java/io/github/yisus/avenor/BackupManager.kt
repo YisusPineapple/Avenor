@@ -30,7 +30,8 @@ object BackupManager {
                 lyricOffsets = dao.getAllLyricOffsets(),
                 playbackQueues = dao.getAllQueuesSync(),
                 queueSongs = dao.getAllQueueSongsSync(),
-                trashItems = dao.getAllTrashItemsSync()
+                trashItems = dao.getAllTrashItemsSync(),
+                favorites = dao.getAllFavoritesSync()
             )
             val jsonString = jsonFormat.encodeToString(exportData)
             
@@ -86,28 +87,8 @@ object BackupManager {
             val importData = jsonFormat.decodeFromString<DatabaseExport>(jsonString)
             val dao = AppDatabase.getDatabase(context).musicDao()
 
-            // Clear and insert
-            dao.clearPlaylistSongs()
-            dao.clearHistory()
-            dao.clearPlaylists()
-            dao.clearSongs()
-            dao.clearEqPresets()
-            dao.clearLyricOffsets()
-            dao.clearPlaybackQueues()
-            dao.clearQueueSongs()
-            dao.clearTrashItems()
-
-            dao.insertSongs(importData.songs)
-            importData.playlists.forEach { dao.insertPlaylist(it) }
-            importData.history.forEach { dao.insertHistory(it) }
-            importData.playlistSongs.forEach { dao.insertSongToPlaylist(it) }
-            importData.eqPresets.forEach { dao.insertEqPreset(it) }
-            importData.settings?.let { dao.saveSettings(it) }
-            importData.lyricOffsets.forEach { dao.saveLyricOffset(it) }
-            importData.playbackQueues.forEach { dao.insertPlaybackQueue(it) }
-            importData.queueSongs.let { if(it.isNotEmpty()) dao.insertQueueSongs(it) }
-            importData.trashItems.forEach { dao.insertTrashItem(it) }
-
+            // Perform transactional restore to guarantee data safety
+            dao.restoreDatabase(importData)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -129,7 +110,8 @@ object BackupManager {
                 lyricOffsets = dao.getAllLyricOffsets(),
                 playbackQueues = dao.getAllQueuesSync(),
                 queueSongs = dao.getAllQueueSongsSync(),
-                trashItems = dao.getAllTrashItemsSync()
+                trashItems = dao.getAllTrashItemsSync(),
+                favorites = dao.getAllFavoritesSync()
             )
             val jsonString = jsonFormat.encodeToString(exportData)
             val file = File(context.filesDir, "avenor_auto_backup.json")

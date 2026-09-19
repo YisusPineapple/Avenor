@@ -110,16 +110,19 @@ val trashPurgeDays: Int = 30 // 7, 15, 30
 @Entity(tableName = "playback_queues")
 @Serializable
 data class PlaybackQueue(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val name: String,
+    @PrimaryKey val id: Int = 1,
+    val name: String = "ACTIVE_QUEUE",
     val currentSongId: Long? = null,
+    val currentIndex: Int = 0,
     val currentPositionMs: Long = 0,
+    val shuffleMode: Boolean = false,
+    val repeatMode: Int = 0,
+    val isPlaying: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(
     tableName = "queue_songs",
-    primaryKeys = ["queueId", "songId"],
     foreignKeys = [
         ForeignKey(entity = PlaybackQueue::class, parentColumns = ["id"], childColumns = ["queueId"], onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = Song::class, parentColumns = ["id"], childColumns = ["songId"], onDelete = ForeignKey.CASCADE)
@@ -128,7 +131,8 @@ data class PlaybackQueue(
 )
 @Serializable
 data class QueueSong(
-    val queueId: Int,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val queueId: Int = 1,
     val songId: Long,
     val positionIndex: Int
 )
@@ -138,6 +142,24 @@ data class QueueSong(
 data class TrashItem(
     @PrimaryKey val songId: Long,
     val deletedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "favorites",
+    foreignKeys = [
+        ForeignKey(
+            entity = Song::class,
+            parentColumns = ["id"],
+            childColumns = ["songId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("songId")]
+)
+@Serializable
+data class Favorite(
+    @PrimaryKey val songId: Long,
+    val addedAt: Long = System.currentTimeMillis()
 )
 
 @Serializable
@@ -151,7 +173,8 @@ data class DatabaseExport(
     val lyricOffsets: List<LyricOffset>,
     val playbackQueues: List<PlaybackQueue> = emptyList(),
     val queueSongs: List<QueueSong> = emptyList(),
-    val trashItems: List<TrashItem> = emptyList()
+    val trashItems: List<TrashItem> = emptyList(),
+    val favorites: List<Favorite> = emptyList()
 )
 
 @Dao
@@ -202,6 +225,12 @@ interface MusicDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlaybackQueue(queue: PlaybackQueue): Long
 
+    @Query("SELECT * FROM playback_queues WHERE id = :queueId")
+    fun getPlaybackQueue(queueId: Int = 1): Flow<PlaybackQueue?>
+
+    @Query("SELECT * FROM playback_queues WHERE id = :queueId")
+    suspend fun getPlaybackQueueSync(queueId: Int = 1): PlaybackQueue?
+
     @Query("SELECT * FROM playback_queues ORDER BY updatedAt DESC")
     fun getAllQueues(): Flow<List<PlaybackQueue>>
 
@@ -211,8 +240,29 @@ interface MusicDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQueueSongs(songs: List<QueueSong>)
 
+    @Query("SELECT * FROM queue_songs WHERE queueId = :queueId ORDER BY positionIndex ASC")
+    suspend fun getQueueSongsSync(queueId: Int = 1): List<QueueSong>
+
     @Query("SELECT songs.* FROM songs INNER JOIN queue_songs ON songs.id = queue_songs.songId WHERE queue_songs.queueId = :queueId ORDER BY queue_songs.positionIndex ASC")
-    suspend fun getSongsForQueueSync(queueId: Int): List<Song>
+    suspend fun getSongsForQueueSync(queueId: Int = 1): List<Song>
+
+    @Query("UPDATE playback_queues SET currentPositionMs = :positionMs, updatedAt = :updatedAt WHERE id = :queueId")
+    suspend fun updatePlaybackPosition(queueId: Int = 1, positionMs: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE playback_queues SET currentSongId = :songId, currentIndex = :currentIndex, currentPositionMs = :positionMs, isPlaying = :isPlaying, shuffleMode = :shuffleMode, repeatMode = :repeatMode, updatedAt = :updatedAt WHERE id = :queueId")
+    suspend fun updatePlaybackState(queueId: Int = 1, songId: Long?, currentIndex: Int, positionMs: Long, isPlaying: Boolean, shuffleMode: Boolean, repeatMode: Int, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM queue_songs WHERE queueId = :queueId")
+    suspend fun clearQueueSongs(queueId: Int = 1)
+
+    @Transaction
+    suspend fun saveFullQueue(queue: PlaybackQueue, items: List<QueueSong>) {
+        insertPlaybackQueue(queue)
+        clearQueueSongs(queue.id)
+        if (items.isNotEmpty()) {
+            insertQueueSongs(items)
+        }
+    }
 
     @Query("SELECT * FROM queue_songs")
     suspend fun getAllQueueSongsSync(): List<QueueSong>
@@ -315,73 +365,172 @@ suspend fun saveSettings(setting: AppSetting)
     @Query("SELECT offsetMs FROM lyric_offset WHERE songId = :songId")
     suspend fun getLyricOffset(songId: Long): Long?
 
+    // --- Favorites ---
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE songId = :songId)")
+    fun isFavorite(songId: Long): Flow<Boolean>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE songId = :songId)")
+    suspend fun isFavoriteSync(songId: Long): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addFavorite(favorite: Favorite)
+
+    @Query("DELETE FROM favorites WHERE songId = :songId")
+    suspend fun removeFavorite(songId: Long)
+
+    @Query("SELECT songs.* FROM songs INNER JOIN favorites ON songs.id = favorites.songId ORDER BY favorites.addedAt DESC")
+    fun getFavoriteSongs(): Flow<List<Song>>
+
+    @Query("SELECT songId FROM favorites")
+    fun getAllFavoriteSongIds(): Flow<List<Long>>
+
+    @Query("SELECT * FROM favorites")
+    suspend fun getAllFavoritesSync(): List<Favorite>
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearFavorites()
+
+    @Transaction
+    suspend fun restoreDatabase(export: DatabaseExport) {
+        clearPlaylistSongs()
+        clearHistory()
+        clearPlaylists()
+        clearSongs()
+        clearEqPresets()
+        clearLyricOffsets()
+        clearPlaybackQueues()
+        clearQueueSongs()
+        clearTrashItems()
+        clearFavorites()
+
+        insertSongs(export.songs)
+        export.playlists.forEach { insertPlaylist(it) }
+        export.playlistSongs.forEach { insertSongToPlaylist(it) }
+        export.eqPresets.forEach { insertEqPreset(it) }
+        export.lyricOffsets.forEach { saveLyricOffset(it) }
+        export.settings?.let { saveSettings(it) }
+        export.playbackQueues.forEach { insertPlaybackQueue(it) }
+        insertQueueSongs(export.queueSongs)
+        export.trashItems.forEach { insertTrashItem(it) }
+        export.favorites.forEach { addFavorite(it) }
+    }
 }
 
 @Serializable
 data class TopArtistResult(val artist: String, val playCount: Int)
 
-
-val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { /* ... */ } }
-val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) { /* ... */ } }
-val MIGRATION_3_4 = object : Migration(3, 4) { override fun migrate(db: SupportSQLiteDatabase) { /* ... */ } }
+val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { } }
+val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) { } }
+val MIGRATION_3_4 = object : Migration(3, 4) { override fun migrate(db: SupportSQLiteDatabase) { } }
 val MIGRATION_4_5 = object : Migration(4, 5) {
-override fun migrate(db: SupportSQLiteDatabase) {
-db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `themeStyle` TEXT NOT NULL DEFAULT 'WARMTH'")
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `themeStyle` TEXT NOT NULL DEFAULT 'WARMTH'")
+    }
 }
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `favorites` (
+                `songId` INTEGER NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`songId`),
+                FOREIGN KEY(`songId`) REFERENCES `songs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_favorites_songId` ON `favorites` (`songId`)")
+    }
+}
+
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `playback_queues` ADD COLUMN `currentIndex` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `playback_queues` ADD COLUMN `shuffleMode` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `playback_queues` ADD COLUMN `repeatMode` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `playback_queues` ADD COLUMN `isPlaying` INTEGER NOT NULL DEFAULT 0")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `queue_songs_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `queueId` INTEGER NOT NULL,
+                `songId` INTEGER NOT NULL,
+                `positionIndex` INTEGER NOT NULL,
+                FOREIGN KEY(`queueId`) REFERENCES `playback_queues`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`songId`) REFERENCES `songs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("INSERT INTO `queue_songs_new` (`queueId`, `songId`, `positionIndex`) SELECT `queueId`, `songId`, `positionIndex` FROM `queue_songs`")
+        db.execSQL("DROP TABLE `queue_songs`")
+        db.execSQL("ALTER TABLE `queue_songs_new` RENAME TO `queue_songs`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_queue_songs_songId` ON `queue_songs` (`songId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_queue_songs_queueId` ON `queue_songs` (`queueId`)")
+    }
 }
 
 @Database(
-entities = [Song::class, Playlist::class, ListeningHistory::class, PlaylistSongCrossRef::class, EqPreset::class, AppSetting::class, LyricOffset::class, PlaybackQueue::class, QueueSong::class, TrashItem::class],
-version = 11,
-exportSchema = false
+    entities = [
+        Song::class,
+        Playlist::class,
+        ListeningHistory::class,
+        PlaylistSongCrossRef::class,
+        EqPreset::class,
+        AppSetting::class,
+        LyricOffset::class,
+        PlaybackQueue::class,
+        QueueSong::class,
+        TrashItem::class,
+        Favorite::class
+    ],
+    version = 13,
+    exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-abstract fun musicDao(): MusicDao
-companion object {
-@Volatile private var INSTANCE: AppDatabase? = null
-fun getDatabase(context: Context): AppDatabase {
-return INSTANCE ?: synchronized(this) {
-val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-.fallbackToDestructiveMigration() // Handle prior dummy migrations cleanly for legacy safety
-.addCallback(object : RoomDatabase.Callback() {
+    abstract fun musicDao(): MusicDao
 
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            val dao = INSTANCE?.musicDao()
-                            if (dao != null) {
-                                EqPresetValidator.predefinedPresets.forEach { preset ->
-                                    dao.insertEqPreset(preset)
+    companion object {
+        @Volatile private var INSTANCE: AppDatabase? = null
+        private val dbScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13)
+                    .addCallback(object : RoomDatabase.Callback() {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            super.onCreate(db)
+                            dbScope.launch {
+                                val dao = INSTANCE?.musicDao()
+                                if (dao != null) {
+                                    EqPresetValidator.predefinedPresets.forEach { preset ->
+                                        dao.insertEqPreset(preset)
+                                    }
+                                    val tier = PerformanceBenchmark.evaluateDeviceTier(context)
+                                    dao.saveSettings(AppSetting(performanceMode = tier))
                                 }
-                                
-                                // Apply benchmark tier on first launch
-                                val tier = PerformanceBenchmark.evaluateDeviceTier(context)
-                                dao.saveSettings(AppSetting(performanceMode = tier))
                             }
                         }
-                    }
-                    
-                    override fun onOpen(db: SupportSQLiteDatabase) {
 
-super.onOpen(db)
-// Run Vacuum if file > 5MB to optimize low-end storage
-val dbFile = context.getDatabasePath("avenor_database")
-if (dbFile.exists() && dbFile.length() > 5L * 1024 * 1024) {
-kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-try {
-// Room's raw queries or openHelper can execute VACUUM
-INSTANCE?.openHelper?.writableDatabase?.execSQL("VACUUM")
-} catch (e: Exception) {
-e.printStackTrace()
-}
-}
-}
-}
-})
-.build()
-INSTANCE = instance
-instance
-}
-}
-}
+                        override fun onOpen(db: SupportSQLiteDatabase) {
+                            super.onOpen(db)
+                            val dbFile = context.getDatabasePath("avenor_database")
+                            if (dbFile.exists() && dbFile.length() > 5L * 1024 * 1024) {
+                                dbScope.launch {
+                                    try {
+                                        INSTANCE?.openHelper?.writableDatabase?.execSQL("VACUUM")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("AppDatabase", "VACUUM failed", e)
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
 }

@@ -29,7 +29,7 @@ class CrossfadePerformanceTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         player = ExoPlayer.Builder(RuntimeEnvironment.getApplication()).build()
-        crossfadeManager = CrossfadeManager(player)
+        crossfadeManager = CrossfadeManager(player, RuntimeEnvironment.getApplication())
     }
 
     @After
@@ -41,24 +41,16 @@ class CrossfadePerformanceTest {
 
     @Test
     fun testManualSkipCrossfade_doesNotBlockMainThread() = runTest(testDispatcher) {
-        val startMainQueueSize = shadowOf(Looper.getMainLooper()).scheduler.size()
-        
         // Trigger manual skip which initiates crossfade coroutines
         crossfadeManager.manualSkip(forward = true)
+        shadowOf(Looper.getMainLooper()).idle()
         
-        // Ensure that immediate execution does not post excessive immediate runnables to main
-        val midMainQueueSize = shadowOf(Looper.getMainLooper()).scheduler.size()
-        
-        // Advance time to allow coroutines to execute
+        // Advance time to allow coroutines and animations to execute
         testDispatcher.scheduler.advanceTimeBy(4000)
-        
-        val endMainQueueSize = shadowOf(Looper.getMainLooper()).scheduler.size()
+        shadowOf(Looper.getMainLooper()).idle()
 
-        // The exact numbers depend on Robolectric, but we assert the main loop isn't flooded
-        // and that crossfading finishes properly.
+        // Assert crossfade executes properly and volume resets
         assertTrue("Crossfade should execute smoothly without crashing", true)
-        
-        // Verify volume resets
         assertTrue("Volume should reset to 1.0f after fade in", player.volume == 1.0f)
     }
 }

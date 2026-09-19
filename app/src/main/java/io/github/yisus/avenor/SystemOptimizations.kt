@@ -92,6 +92,7 @@ suspend fun startMemoryWatchdog(context: Context) {
 }
 
 
+
 @Composable
 fun DesktopParityDashboard(appSettings: AppSetting, modifier: Modifier = Modifier) {
     if (DeviceProfileManager.isDesktop()) {
@@ -147,22 +148,5 @@ fun DesktopParityDashboard(appSettings: AppSetting, modifier: Modifier = Modifie
     }
 }
 
-@Composable
-fun RecapTemplateEngine(recapType: String, primaryColor: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surface)) {
-        val canvasWidth = size.width
-        val canvasHeight = size.height
-        
-        drawRoundRect(
-            color = primaryColor.copy(alpha = 0.2f),
-            size = size,
-            cornerRadius = CornerRadius(32.dp.toPx())
-        )
-        
-        drawCircle(
-            color = primaryColor.copy(alpha = 0.5f),
-            radius = canvasWidth * 0.3f,
-            center = androidx.compose.ui.geometry.Offset(canvasWidth * 0.8f, canvasHeight * 0.2f)
-        )
-    }
-}
+
+
