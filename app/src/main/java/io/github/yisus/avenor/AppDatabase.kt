@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import android.content.Context
 
 import androidx.room.*
+import androidx.paging.PagingSource
 import kotlinx.serialization.Serializable
 
 import androidx.room.migration.Migration
@@ -19,7 +20,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "songs")
+@Entity(
+    tableName = "songs",
+    indices = [
+        Index("title"),
+        Index("artist"),
+        Index("album"),
+        Index("genre"),
+        Index("dateAdded"),
+        Index(value = ["artist", "album"])
+    ]
+)
 @Serializable
 data class Song(
     @PrimaryKey val id: Long,
@@ -32,7 +43,25 @@ data class Song(
     val bitDepth: Int = 16,
     val sampleRate: Int = 44100,
     val mimeType: String = "audio/mpeg",
-    val fileExtension: String = "mp3"
+    val fileExtension: String = "mp3",
+    val codec: String = "MP3",
+    val bitrate: Long = 0L,
+    val channels: Int = 2,
+    val fileSize: Long = 0L,
+    val dateModified: Long = 0L,
+    val dateAdded: Long = 0L,
+    val trackNumber: Int = 0,
+    val discNumber: Int = 0,
+    val year: Int = 0,
+    val genre: String = "",
+    val composer: String = "",
+    val albumArtist: String = ""
+)
+
+data class SongHeader(
+    val id: Long,
+    val dateModified: Long,
+    val fileSize: Long
 )
 
 @Entity(tableName = "playlists")
@@ -180,7 +209,61 @@ data class DatabaseExport(
 @Dao
 interface MusicDao {
     @Query("SELECT * FROM songs WHERE id = :id")
-    suspend fun getSongById(id: Int): Song?
+    suspend fun getSongById(id: Long): Song?
+
+    suspend fun getSongById(id: Int): Song? = getSongById(id.toLong())
+
+    @Query("SELECT id, dateModified, fileSize FROM songs")
+    suspend fun getAllSongHeaders(): List<SongHeader>
+
+    @Query("DELETE FROM songs WHERE id IN (:ids)")
+    suspend fun deleteSongsByIds(ids: List<Long>)
+
+    @Query("SELECT COUNT(*) FROM songs")
+    fun getSongsCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM songs")
+    suspend fun getSongsCountSync(): Int
+
+    @Query("SELECT * FROM songs ORDER BY title COLLATE NOCASE ASC")
+    fun getPagedSongs(): PagingSource<Int, Song>
+
+    @Query("SELECT * FROM songs ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    fun getPagedSongsByArtist(): PagingSource<Int, Song>
+
+    @Query("SELECT * FROM songs ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    fun getPagedSongsByAlbum(): PagingSource<Int, Song>
+
+    @Query("SELECT * FROM songs ORDER BY dateAdded DESC")
+    fun getPagedSongsByDateAdded(): PagingSource<Int, Song>
+
+    @Query("SELECT * FROM songs ORDER BY durationMs DESC")
+    fun getPagedSongsByDuration(): PagingSource<Int, Song>
+
+    @Query("""
+        SELECT * FROM songs 
+        WHERE title LIKE '%' || :query || '%' 
+           OR artist LIKE '%' || :query || '%' 
+           OR album LIKE '%' || :query || '%' 
+           OR genre LIKE '%' || :query || '%'
+        ORDER BY title COLLATE NOCASE ASC
+    """)
+    fun searchPagedSongs(query: String): PagingSource<Int, Song>
+
+    @Query("""
+        SELECT songs.* FROM songs 
+        INNER JOIN favorites ON songs.id = favorites.songId 
+        ORDER BY favorites.addedAt DESC
+    """)
+    fun getPagedFavorites(): PagingSource<Int, Song>
+
+    @Query("""
+        SELECT songs.* FROM songs 
+        INNER JOIN playlist_songs ON songs.id = playlist_songs.songId 
+        WHERE playlist_songs.playlistId = :playlistId 
+        ORDER BY playlist_songs.addedAt ASC
+    """)
+    fun getPagedSongsForPlaylist(playlistId: Int): PagingSource<Int, Song>
 
 
     @Query("SELECT * FROM lyric_offset")
@@ -470,6 +553,30 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `codec` TEXT NOT NULL DEFAULT 'MP3'")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `bitrate` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `channels` INTEGER NOT NULL DEFAULT 2")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `fileSize` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `dateModified` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `dateAdded` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `trackNumber` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `discNumber` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `year` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `genre` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `composer` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `albumArtist` TEXT NOT NULL DEFAULT ''")
+
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_title` ON `songs` (`title`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_artist` ON `songs` (`artist`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_album` ON `songs` (`album`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_genre` ON `songs` (`genre`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_dateAdded` ON `songs` (`dateAdded`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_artist_album` ON `songs` (`artist`, `album`)")
+    }
+}
+
 @Database(
     entities = [
         Song::class,
@@ -484,7 +591,7 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
         TrashItem::class,
         Favorite::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -497,7 +604,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

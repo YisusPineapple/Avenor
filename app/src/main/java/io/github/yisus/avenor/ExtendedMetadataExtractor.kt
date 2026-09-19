@@ -11,10 +11,13 @@ object ExtendedMetadataExtractor {
     private const val TAG = "ExtendedMetadataExtractor"
 
     data class AudioSpecs(
-        val bitDepth: Int,
-        val sampleRate: Int,
-        val mimeType: String,
-        val fileExtension: String
+        val bitDepth: Int = 16,
+        val sampleRate: Int = 44100,
+        val mimeType: String = "audio/mpeg",
+        val fileExtension: String = "mp3",
+        val codec: String = "MP3",
+        val bitrate: Long = 0L,
+        val channels: Int = 2
     )
 
     fun extract(context: Context, uri: Uri, filePath: String? = null): AudioSpecs {
@@ -22,6 +25,8 @@ object ExtendedMetadataExtractor {
         var sampleRate = 44100
         var mimeType = "audio/mpeg"
         var ext = "mp3"
+        var bitrate = 0L
+        var channels = 2
 
         if (filePath != null) {
             val file = File(filePath)
@@ -43,6 +48,14 @@ object ExtendedMetadataExtractor {
                 if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
                     sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 }
+
+                if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                    channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                }
+
+                if (format.containsKey(MediaFormat.KEY_BIT_RATE)) {
+                    bitrate = format.getInteger(MediaFormat.KEY_BIT_RATE).toLong()
+                }
                 
                 // Bit Depth inference
                 if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
@@ -52,20 +65,40 @@ object ExtendedMetadataExtractor {
                         android.media.AudioFormat.ENCODING_PCM_16BIT -> 16
                         android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED,
                         android.media.AudioFormat.ENCODING_PCM_32BIT,
-                        android.media.AudioFormat.ENCODING_PCM_FLOAT -> 24 // or 32, label as high res
+                        android.media.AudioFormat.ENCODING_PCM_FLOAT -> 24
                         else -> 16
                     }
                 } else if (mimeType.contains("flac") || mimeType.contains("alac") || mimeType.contains("opus") || mimeType.contains("ac4") || mimeType.contains("eac3")) {
-                     // High res codecs defaults if PCM encoding key is missing
-                     bitDepth = 24
+                    bitDepth = 24
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to extract metadata for $uri", e)
         } finally {
-            extractor.release()
+            try {
+                extractor.release()
+            } catch (e: Exception) {
+                // ignore
+            }
         }
 
-        return AudioSpecs(bitDepth, sampleRate, mimeType, ext)
+        val codec = resolveCodec(mimeType, ext)
+        return AudioSpecs(bitDepth, sampleRate, mimeType, ext, codec, bitrate, channels)
+    }
+
+    fun resolveCodec(mimeType: String, ext: String): String {
+        val lowerMime = mimeType.lowercase()
+        val lowerExt = ext.lowercase()
+        return when {
+            lowerMime.contains("flac") || lowerExt == "flac" -> "FLAC"
+            lowerMime.contains("alac") || lowerExt == "alac" -> "ALAC"
+            lowerMime.contains("opus") || lowerExt == "opus" -> "OPUS"
+            lowerMime.contains("vorbis") || lowerExt == "ogg" -> "OGG"
+            lowerMime.contains("mp4a") || lowerMime.contains("aac") || lowerExt in listOf("m4a", "aac", "mp4") -> "AAC"
+            lowerMime.contains("mpeg") || lowerMime.contains("mp3") || lowerExt == "mp3" -> "MP3"
+            lowerMime.contains("wav") || lowerExt == "wav" -> "WAV"
+            lowerMime.contains("eac3") || lowerMime.contains("ac3") -> "Dolby Digital"
+            else -> ext.uppercase().ifEmpty { "AUDIO" }
+        }
     }
 }

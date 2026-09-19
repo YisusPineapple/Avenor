@@ -1,8 +1,18 @@
 package io.github.yisus.avenor
 
+import androidx.paging.PagingSource
 import kotlinx.coroutines.flow.Flow
 
+enum class SongSortOrder {
+    TITLE,
+    ARTIST,
+    ALBUM,
+    DATE_ADDED,
+    DURATION
+}
+
 class DatabaseRepository(val dao: MusicDao) {
+    val songsCount: Flow<Int> = dao.getSongsCount()
     val allSongs: Flow<List<Song>> = dao.getAllSongs()
     val allPlaylists: Flow<List<Playlist>> = dao.getAllPlaylists()
     val recentHistory: Flow<List<Song>> = dao.getRecentHistory()
@@ -14,6 +24,22 @@ class DatabaseRepository(val dao: MusicDao) {
     val totalListeningTimeMs: Flow<Long?> = dao.getTotalListeningTimeMs()
     val favoriteSongs: Flow<List<Song>> = dao.getFavoriteSongs()
     val favoriteSongIds: Flow<List<Long>> = dao.getAllFavoriteSongIds()
+
+    fun getPagedSongs(sortOrder: SongSortOrder = SongSortOrder.TITLE): PagingSource<Int, Song> {
+        return when (sortOrder) {
+            SongSortOrder.TITLE -> dao.getPagedSongs()
+            SongSortOrder.ARTIST -> dao.getPagedSongsByArtist()
+            SongSortOrder.ALBUM -> dao.getPagedSongsByAlbum()
+            SongSortOrder.DATE_ADDED -> dao.getPagedSongsByDateAdded()
+            SongSortOrder.DURATION -> dao.getPagedSongsByDuration()
+        }
+    }
+
+    fun searchPagedSongs(query: String): PagingSource<Int, Song> = dao.searchPagedSongs(query)
+
+    fun getPagedFavorites(): PagingSource<Int, Song> = dao.getPagedFavorites()
+
+    fun getPagedSongsForPlaylist(playlistId: Int): PagingSource<Int, Song> = dao.getPagedSongsForPlaylist(playlistId)
 
     fun isFavorite(songId: Long): Flow<Boolean> = dao.isFavorite(songId)
     suspend fun isFavoriteSync(songId: Long): Boolean = dao.isFavoriteSync(songId)
@@ -30,20 +56,33 @@ class DatabaseRepository(val dao: MusicDao) {
     }
 
     suspend fun reconcileSongs(currentStorageSongs: List<Song>) {
-        val existing = dao.getAllSongsSync()
+        val existingHeaders = dao.getAllSongHeaders().associateBy { it.id }
         val currentIds = currentStorageSongs.map { it.id }.toSet()
-        val toDelete = existing.filter { !currentIds.contains(it.id) }
-        toDelete.forEach { song ->
-            dao.deleteSong(song)
+        val toDeleteIds = existingHeaders.keys.filter { !currentIds.contains(it) }
+
+        if (toDeleteIds.isNotEmpty()) {
+            toDeleteIds.chunked(500).forEach { batch ->
+                dao.deleteSongsByIds(batch)
+            }
         }
-        if (currentStorageSongs.isNotEmpty()) {
-            dao.insertSongs(currentStorageSongs)
+
+        val toInsertOrUpdate = currentStorageSongs.filter { song ->
+            val existing = existingHeaders[song.id]
+            existing == null || existing.dateModified != song.dateModified || existing.fileSize != song.fileSize
+        }
+
+        if (toInsertOrUpdate.isNotEmpty()) {
+            toInsertOrUpdate.chunked(50).forEach { batch ->
+                dao.insertSongs(batch)
+            }
         }
     }
 
     suspend fun syncLocalSongs(songs: List<Song>) {
         if (songs.isNotEmpty()) {
-            dao.insertSongs(songs)
+            songs.chunked(50).forEach { batch ->
+                dao.insertSongs(batch)
+            }
         }
     }
     

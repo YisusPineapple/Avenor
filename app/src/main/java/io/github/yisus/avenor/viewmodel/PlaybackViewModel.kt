@@ -92,6 +92,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.debounce
 
 @dagger.hilt.android.lifecycle.HiltViewModel
 class PlaybackViewModel @javax.inject.Inject constructor(application: Application) : AndroidViewModel(application) {
@@ -99,6 +106,9 @@ private var controllerFuture: ListenableFuture<MediaController>? = null
 private var controller: MediaController? = null
 
 val dbRepo = DatabaseRepository(AppDatabase.getDatabase(application).musicDao())
+val audioRepo = AudioRepository(application, dbRepo.dao)
+val scanProgress: StateFlow<ScanProgress> = audioRepo.scanProgress
+val songsCount: StateFlow<Int> = dbRepo.songsCount.stateIn(viewModelScope, SharingStarted.Lazily, 0)
 val playbackCoordinator = io.github.yisus.avenor.playback.PlaybackCoordinator.getInstance(application)
 val playbackState = playbackCoordinator.playbackState
 
@@ -185,6 +195,42 @@ private var currentPlayingList: List<Song> = emptyList()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _sortOrder = MutableStateFlow(SongSortOrder.TITLE)
+    val sortOrder: StateFlow<SongSortOrder> = _sortOrder.asStateFlow()
+
+    fun updateSortOrder(order: SongSortOrder) {
+        _sortOrder.value = order
+    }
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val pagedSongs: Flow<PagingData<Song>> = combine(_sortOrder, _searchQuery.debounce(200)) { sort, query ->
+        sort to query
+    }.flatMapLatest { (sort, query) ->
+        if (query.isNotBlank()) {
+            Pager(PagingConfig(pageSize = 50, prefetchDistance = 20, enablePlaceholders = false)) {
+                dbRepo.searchPagedSongs(query.trim())
+            }.flow
+        } else {
+            Pager(PagingConfig(pageSize = 50, prefetchDistance = 20, enablePlaceholders = false)) {
+                dbRepo.getPagedSongs(sort)
+            }.flow
+        }
+    }.cachedIn(viewModelScope)
+
+    val pagedFavorites: Flow<PagingData<Song>> = Pager(
+        PagingConfig(pageSize = 50, prefetchDistance = 20, enablePlaceholders = false)
+    ) {
+        dbRepo.getPagedFavorites()
+    }.flow.cachedIn(viewModelScope)
+
+    fun getPagedSongsForPlaylist(playlistId: Int): Flow<PagingData<Song>> {
+        return Pager(
+            PagingConfig(pageSize = 50, prefetchDistance = 20, enablePlaceholders = false)
+        ) {
+            dbRepo.getPagedSongsForPlaylist(playlistId)
+        }.flow.cachedIn(viewModelScope)
+    }
 
     val filteredSongs = combine(songs, _searchQuery) { list, query ->
         SearchOptimizer.filterSongs(list, query)
@@ -394,10 +440,12 @@ updateNotificationPrefs(s.showLike, s.showShuffle, s.showRepeat)
 
 fun loadSongs(context: android.content.Context) {
     viewModelScope.launch {
-        val audioRepo = AudioRepository(context)
-        val localSongs = audioRepo.getLocalAudioFiles()
-        dbRepo.reconcileSongs(localSongs)
+        audioRepo.scanLibrary()
     }
+}
+
+fun playSong(song: Song) {
+    playSongList(listOf(song), 0)
 }
 
 fun playSongList(songList: List<Song>, startIndex: Int) {
@@ -451,11 +499,13 @@ fun setLyricsOffset(offset: Long) {
         dbRepo.dao.clearTrashItems()
     }
 
-    fun renameSong(id: Int, newTitle: String) {
+    fun renameSong(id: Long, newTitle: String) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            dbRepo.dao.renameSong(id, newTitle)
+            dbRepo.dao.renameSong(id.toInt(), newTitle)
         }
     }
+
+    fun renameSong(id: Int, newTitle: String) = renameSong(id.toLong(), newTitle)
 
 fun skipToNext() { controller?.seekToNextMediaItem() }
 fun skipToPrevious() { controller?.seekToPreviousMediaItem() }
