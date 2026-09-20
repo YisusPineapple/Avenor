@@ -347,7 +347,7 @@ fun LibraryScreen(viewModel: PlaybackViewModel, onNavigateToPlaylist: (Screen.Pl
                         val isCurrent = currentSong?.id == song.id
                         val isFav = favoriteSongIds.contains(song.id)
                         Card(
-                            modifier = Modifier.fillMaxWidth().clickable { viewModel.playSong(song) },
+                            modifier = Modifier.fillMaxWidth().clickable { viewModel.playFromLibrary(song) },
                             colors = CardDefaults.cardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
                             shape = MaterialTheme.shapes.medium
                         ) {

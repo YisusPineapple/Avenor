@@ -99,6 +99,8 @@ import androidx.paging.cachedIn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @dagger.hilt.android.lifecycle.HiltViewModel
 class PlaybackViewModel @javax.inject.Inject constructor(application: Application) : AndroidViewModel(application) {
@@ -133,7 +135,7 @@ init {
     }
 }
 
-val songs: StateFlow<List<Song>> = dbRepo.allSongs.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+// Note: songs StateFlow removed to prevent retaining full library in memory. Use pagedSongs for UI and targeted Room lookups.
 val history: StateFlow<List<Song>> = dbRepo.recentHistory.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 val playlists: StateFlow<List<Playlist>> = dbRepo.allPlaylists.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 val dailyMix: StateFlow<List<Song>> = dbRepo.dailyMix.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -232,9 +234,17 @@ private var currentPlayingList: List<Song> = emptyList()
         }.flow.cachedIn(viewModelScope)
     }
 
-    val filteredSongs = combine(songs, _searchQuery) { list, query ->
-        SearchOptimizer.filterSongs(list, query)
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    fun getPagedSongsForSelection(query: String): Flow<PagingData<Song>> {
+        return Pager(
+            PagingConfig(pageSize = 30, prefetchDistance = 10, enablePlaceholders = false)
+        ) {
+            if (query.isNotBlank()) {
+                dbRepo.searchPagedSongs(query.trim())
+            } else {
+                dbRepo.getPagedSongs(SongSortOrder.TITLE)
+            }
+        }.flow.cachedIn(viewModelScope)
+    }
 
     private val _queue = MutableStateFlow<List<Song>>(emptyList())
     val queue: StateFlow<List<Song>> = _queue.asStateFlow()
@@ -252,20 +262,26 @@ private var currentPlayingList: List<Song> = emptyList()
     fun clearSelection() { _selectedSongs.value = emptySet() }
     
     fun enqueueSelected() {
-        val songsToAdd = songs.value.filter { _selectedSongs.value.contains(it.id) }
-        val current = _queue.value.toMutableList()
-        current.addAll(songsToAdd)
-        _queue.value = current
-        currentPlayingList = current
-        songsToAdd.forEach { song ->
-            val mediaItem = androidx.media3.common.MediaItem.Builder().setMediaId(song.id.toString()).setUri(song.uri)
-                .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album).build()).build()
-            controller?.addMediaItem(mediaItem)
+        val selectedIds = _selectedSongs.value.toList()
+        if (selectedIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val songsToAdd = dbRepo.getSongsByIds(selectedIds)
+            if (songsToAdd.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    val current = _queue.value.toMutableList()
+                    current.addAll(songsToAdd)
+                    _queue.value = current
+                    currentPlayingList = current
+                    songsToAdd.forEach { song ->
+                        val mediaItem = androidx.media3.common.MediaItem.Builder().setMediaId(song.id.toString()).setUri(song.uri)
+                            .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album).build()).build()
+                        controller?.addMediaItem(mediaItem)
+                    }
+                    clearSelection()
+                }
+                playbackCoordinator.enqueueAll(songsToAdd)
+            }
         }
-        viewModelScope.launch {
-            playbackCoordinator.enqueueAll(songsToAdd)
-        }
-        clearSelection()
     }
 
     fun updateSearchQuery(query: String) { _searchQuery.value = query }
@@ -409,20 +425,21 @@ controller?.addListener(object : Player.Listener {
 override fun onIsPlayingChanged(isPlaying: Boolean) { _isPlaying.value = isPlaying }
 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
 val mediaId = mediaItem?.mediaId
-val song = currentPlayingList.find { it.id.toString() == mediaId } ?: songs.value.find { it.id.toString() == mediaId }
-_currentSong.value = song
-
-song?.let { currentTrack ->
-    viewModelScope.launch { dbRepo.recordPlay(currentTrack.id) }
-    viewModelScope.launch {
-        val savedOffset = dbRepo.getLyricOffset(currentTrack.id) ?: 0L
-        lyricsOffsetMs.value = savedOffset
+val mediaIdLong = mediaId?.toLongOrNull()
+val songFromQueue = currentPlayingList.find { it.id.toString() == mediaId }
+if (songFromQueue != null) {
+    _currentSong.value = songFromQueue
+    processTrackTransition(songFromQueue, context, mediaItem)
+} else if (mediaIdLong != null) {
+    viewModelScope.launch(Dispatchers.IO) {
+        val resolvedSong = dbRepo.getSongById(mediaIdLong)
+        withContext(Dispatchers.Main) {
+            _currentSong.value = resolvedSong
+            resolvedSong?.let { processTrackTransition(it, context, mediaItem) }
+        }
     }
-    loadLyricsForSong(currentTrack, context)
-
-    // Extract Genre from ID3 Metadata provided by ExoPlayer
-    val id3Genre = mediaItem?.mediaMetadata?.genre?.toString() ?: ""
-    resolveAutoEq(currentTrack, id3Genre)
+} else {
+    _currentSong.value = null
 }
 }
 override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { _isShuffleEnabled.value = shuffleModeEnabled }
@@ -444,31 +461,49 @@ fun loadSongs(context: android.content.Context) {
     }
 }
 
+fun playFromLibrary(song: Song) {
+    viewModelScope.launch(Dispatchers.IO) {
+        val currentOrder = _sortOrder.value
+        val currentQuery = _searchQuery.value
+        val contextSongs = dbRepo.getPlaybackContextSongs(currentOrder, currentQuery)
+        val startIndex = contextSongs.indexOfFirst { it.id == song.id }.let {
+            if (it >= 0) it else 0
+        }
+        val targetList = if (contextSongs.isNotEmpty()) contextSongs else listOf(song)
+        withContext(Dispatchers.Main) {
+            playSongList(targetList, startIndex)
+        }
+    }
+}
+
 fun playSong(song: Song) {
-    playSongList(listOf(song), 0)
+    playFromLibrary(song)
 }
 
 fun playSongList(songList: List<Song>, startIndex: Int) {
-currentPlayingList = songList
-_queue.value = songList
-val mediaItems = songList.map { song ->
-MediaItem.Builder().setMediaId(song.id.toString()).setUri(song.uri)
-.setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album).build()).build()
-}
-controller?.setMediaItems(mediaItems)
-controller?.seekToDefaultPosition(startIndex)
-controller?.prepare()
-controller?.play()
-viewModelScope.launch {
-    playbackCoordinator.saveFullQueue(
-        songs = songList,
-        currentIndex = startIndex,
-        positionMs = 0L,
-        isPlaying = true,
-        shuffleMode = _isShuffleEnabled.value,
-        repeatMode = _repeatMode.value
-    )
-}
+    val validIndex = if (startIndex in songList.indices) startIndex else 0
+    currentPlayingList = songList
+    _queue.value = songList
+    if (songList.isNotEmpty() && validIndex in songList.indices) {
+        _currentSong.value = songList[validIndex]
+    }
+    val mediaItems = songList.map { song ->
+        MediaItem.Builder().setMediaId(song.id.toString()).setUri(song.uri)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album).build()).build()
+    }
+    controller?.setMediaItems(mediaItems, validIndex, 0L)
+    controller?.prepare()
+    controller?.play()
+    viewModelScope.launch {
+        playbackCoordinator.saveFullQueue(
+            songs = songList,
+            currentIndex = validIndex,
+            positionMs = 0L,
+            isPlaying = true,
+            shuffleMode = _isShuffleEnabled.value,
+            repeatMode = _repeatMode.value
+        )
+    }
 }
 
 fun setLyricsOffset(offset: Long) { 
@@ -572,7 +607,25 @@ currentSong.value?.let { resolveAutoEq(it, genre) }
 
 fun createPlaylist(name: String) = viewModelScope.launch { dbRepo.createPlaylist(name) }
 fun addSongToPlaylist(playlistId: Int, songId: Long) = viewModelScope.launch { dbRepo.addSongToPlaylist(playlistId, songId) }
+fun addSongsToPlaylist(playlistId: Int, songIds: Collection<Long>) = viewModelScope.launch(Dispatchers.IO) {
+    songIds.forEach { songId ->
+        dbRepo.addSongToPlaylist(playlistId, songId)
+    }
+}
 fun updatePosition() { controller?.let { _currentPosition.value = it.currentPosition } }
+
+private fun processTrackTransition(currentTrack: Song, context: android.content.Context, mediaItem: MediaItem?) {
+    viewModelScope.launch { dbRepo.recordPlay(currentTrack.id) }
+    viewModelScope.launch {
+        val savedOffset = dbRepo.getLyricOffset(currentTrack.id) ?: 0L
+        lyricsOffsetMs.value = savedOffset
+    }
+    loadLyricsForSong(currentTrack, context)
+
+    // Extract Genre from ID3 Metadata provided by ExoPlayer
+    val id3Genre = mediaItem?.mediaMetadata?.genre?.toString() ?: ""
+    resolveAutoEq(currentTrack, id3Genre)
+}
 
 override fun onCleared() {
 super.onCleared()

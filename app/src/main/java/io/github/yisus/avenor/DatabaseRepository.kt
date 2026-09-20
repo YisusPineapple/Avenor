@@ -13,7 +13,6 @@ enum class SongSortOrder {
 
 class DatabaseRepository(val dao: MusicDao) {
     val songsCount: Flow<Int> = dao.getSongsCount()
-    val allSongs: Flow<List<Song>> = dao.getAllSongs()
     val allPlaylists: Flow<List<Playlist>> = dao.getAllPlaylists()
     val recentHistory: Flow<List<Song>> = dao.getRecentHistory()
     val dailyMix: Flow<List<Song>> = dao.getDailyMix()
@@ -24,6 +23,9 @@ class DatabaseRepository(val dao: MusicDao) {
     val totalListeningTimeMs: Flow<Long?> = dao.getTotalListeningTimeMs()
     val favoriteSongs: Flow<List<Song>> = dao.getFavoriteSongs()
     val favoriteSongIds: Flow<List<Long>> = dao.getAllFavoriteSongIds()
+
+    suspend fun getSongById(id: Long): Song? = dao.getSongById(id)
+    suspend fun getSongsByIds(ids: List<Long>): List<Song> = dao.getSongsByIds(ids)
 
     fun getPagedSongs(sortOrder: SongSortOrder = SongSortOrder.TITLE): PagingSource<Int, Song> {
         return when (sortOrder) {
@@ -36,6 +38,24 @@ class DatabaseRepository(val dao: MusicDao) {
     }
 
     fun searchPagedSongs(query: String): PagingSource<Int, Song> = dao.searchPagedSongs(query)
+
+    suspend fun getPlaybackContextSongs(
+        sortOrder: SongSortOrder = SongSortOrder.TITLE,
+        query: String = ""
+    ): List<Song> {
+        val items = if (query.isNotBlank()) {
+            dao.searchPlaybackSongs(query.trim())
+        } else {
+            when (sortOrder) {
+                SongSortOrder.TITLE -> dao.getPlaybackSongsByTitle()
+                SongSortOrder.ARTIST -> dao.getPlaybackSongsByArtist()
+                SongSortOrder.ALBUM -> dao.getPlaybackSongsByAlbum()
+                SongSortOrder.DATE_ADDED -> dao.getPlaybackSongsByDateAdded()
+                SongSortOrder.DURATION -> dao.getPlaybackSongsByDuration()
+            }
+        }
+        return items.map { it.toSong() }
+    }
 
     fun getPagedFavorites(): PagingSource<Int, Song> = dao.getPagedFavorites()
 
@@ -66,14 +86,26 @@ class DatabaseRepository(val dao: MusicDao) {
             }
         }
 
-        val toInsertOrUpdate = currentStorageSongs.filter { song ->
+        val toInsert = mutableListOf<Song>()
+        val toUpdate = mutableListOf<Song>()
+        for (song in currentStorageSongs) {
             val existing = existingHeaders[song.id]
-            existing == null || existing.dateModified != song.dateModified || existing.fileSize != song.fileSize
+            if (existing == null) {
+                toInsert.add(song)
+            } else if (existing.dateModified != song.dateModified || existing.fileSize != song.fileSize) {
+                toUpdate.add(song)
+            }
         }
 
-        if (toInsertOrUpdate.isNotEmpty()) {
-            toInsertOrUpdate.chunked(50).forEach { batch ->
+        if (toInsert.isNotEmpty()) {
+            toInsert.chunked(50).forEach { batch ->
                 dao.insertSongs(batch)
+            }
+        }
+
+        if (toUpdate.isNotEmpty()) {
+            toUpdate.chunked(50).forEach { batch ->
+                dao.updateSongs(batch)
             }
         }
     }

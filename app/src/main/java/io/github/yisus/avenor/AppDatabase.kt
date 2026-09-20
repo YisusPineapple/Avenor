@@ -64,6 +64,32 @@ data class SongHeader(
     val fileSize: Long
 )
 
+data class PlaybackSongItem(
+    val id: Long,
+    val uri: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val durationMs: Long,
+    val albumArtUri: String?,
+    val codec: String = "MP3",
+    val sampleRate: Int = 44100,
+    val bitDepth: Int = 16
+) {
+    fun toSong(): Song = Song(
+        id = id,
+        uri = uri,
+        title = title,
+        artist = artist,
+        album = album,
+        durationMs = durationMs,
+        albumArtUri = albumArtUri,
+        codec = codec,
+        sampleRate = sampleRate,
+        bitDepth = bitDepth
+    )
+}
+
 @Entity(tableName = "playlists")
 @Serializable
 data class Playlist(
@@ -211,6 +237,9 @@ interface MusicDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     suspend fun getSongById(id: Long): Song?
 
+    @Query("SELECT * FROM songs WHERE id IN (:ids)")
+    suspend fun getSongsByIds(ids: List<Long>): List<Song>
+
     @Query("SELECT id, dateModified, fileSize FROM songs")
     suspend fun getAllSongHeaders(): List<SongHeader>
 
@@ -247,6 +276,31 @@ interface MusicDao {
         ORDER BY title COLLATE NOCASE ASC
     """)
     fun searchPagedSongs(query: String): PagingSource<Int, Song>
+
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY title COLLATE NOCASE ASC")
+    suspend fun getPlaybackSongsByTitle(): List<PlaybackSongItem>
+
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    suspend fun getPlaybackSongsByArtist(): List<PlaybackSongItem>
+
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    suspend fun getPlaybackSongsByAlbum(): List<PlaybackSongItem>
+
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY dateAdded DESC")
+    suspend fun getPlaybackSongsByDateAdded(): List<PlaybackSongItem>
+
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY durationMs DESC")
+    suspend fun getPlaybackSongsByDuration(): List<PlaybackSongItem>
+
+    @Query("""
+        SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs 
+        WHERE title LIKE '%' || :query || '%' 
+           OR artist LIKE '%' || :query || '%' 
+           OR album LIKE '%' || :query || '%' 
+           OR genre LIKE '%' || :query || '%'
+        ORDER BY title COLLATE NOCASE ASC
+    """)
+    suspend fun searchPlaybackSongs(query: String): List<PlaybackSongItem>
 
     @Query("""
         SELECT songs.* FROM songs 
@@ -384,7 +438,10 @@ interface MusicDao {
 suspend fun insertSongs(songs: List<Song>)
 
 @Update
-    suspend fun updateSong(song: Song)
+suspend fun updateSongs(songs: List<Song>)
+
+@Update
+suspend fun updateSong(song: Song)
 
     @Delete
     suspend fun deleteSong(song: Song)

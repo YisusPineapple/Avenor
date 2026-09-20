@@ -3,7 +3,7 @@ package io.github.yisus.avenor
 object SearchOptimizer {
 
     // Simple fuzzy matching by checking if all characters of query appear in sequence in the target
-    private fun fuzzyMatch(query: String, target: String): Boolean {
+    fun fuzzyMatch(query: String, target: String): Boolean {
         if (query.isEmpty()) return true
         if (target.isEmpty()) return false
         
@@ -21,6 +21,10 @@ object SearchOptimizer {
         return qIdx == lowerQuery.length
     }
 
+    @Deprecated(
+        message = "Do not use to filter the entire library in memory. Library search is backed by Room Paging (searchPagedSongs).",
+        level = DeprecationLevel.WARNING
+    )
     fun filterSongs(songs: List<Song>, query: String): List<Song> {
         if (query.isBlank()) return songs
         return songs.filter { 

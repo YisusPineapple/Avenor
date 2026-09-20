@@ -18,14 +18,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import coil.compose.AsyncImage
 import io.github.yisus.avenor.ui.components.RenameDialog
 import io.github.yisus.avenor.PlaybackViewModel
@@ -48,35 +53,118 @@ import io.github.yisus.avenor.PlaybackViewModel
 @Composable
 fun PlaylistDetailsScreen(viewModel: PlaybackViewModel, playlistId: Int) {
     val playlistSongs by viewModel.dbRepo.getSongsForPlaylist(playlistId).collectAsState(initial = emptyList())
-    val allSongs by viewModel.songs.collectAsState()
     val currentSong by viewModel.currentSong.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     var showAddSongsDialog by remember { mutableStateOf(false) }
+    var dialogSearchQuery by remember { mutableStateOf("") }
+    var selectedSongIds by remember { mutableStateOf(setOf<Long>()) }
 
     if (showAddSongsDialog) {
+        val pagedSelectionSongs = remember(dialogSearchQuery) {
+            viewModel.getPagedSongsForSelection(dialogSearchQuery)
+        }.collectAsLazyPagingItems()
+
         AlertDialog(
-            onDismissRequest = { showAddSongsDialog = false },
-            title = { Text("Add Songs") },
+            onDismissRequest = {
+                showAddSongsDialog = false
+                dialogSearchQuery = ""
+                selectedSongIds = emptySet()
+            },
+            title = { Text("Add Songs to Playlist") },
             text = {
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(400.dp)) {
-                    items(allSongs) { song ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                Column(modifier = Modifier.fillMaxWidth().height(420.dp)) {
+                    OutlinedTextField(
+                        value = dialogSearchQuery,
+                        onValueChange = { dialogSearchQuery = it },
+                        placeholder = { Text("Search songs...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (pagedSelectionSongs.itemCount == 0) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(song.title, fontWeight = FontWeight.Bold, maxLines = 1)
-                                Text(song.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                            }
-                            IconButton(onClick = { viewModel.addSongToPlaylist(playlistId, song.id) }) {
-                                Icon(Icons.Default.Add, contentDescription = "Add")
+                            Text(
+                                "No songs found",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            items(
+                                count = pagedSelectionSongs.itemCount,
+                                key = pagedSelectionSongs.itemKey { it.id }
+                            ) { index ->
+                                val song = pagedSelectionSongs[index]
+                                if (song != null) {
+                                    val isSelected = selectedSongIds.contains(song.id)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selectedSongIds = if (isSelected) {
+                                                    selectedSongIds - song.id
+                                                } else {
+                                                    selectedSongIds + song.id
+                                                }
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(song.title, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            Text(song.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                        }
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = { checked ->
+                                                selectedSongIds = if (checked) {
+                                                    selectedSongIds + song.id
+                                                } else {
+                                                    selectedSongIds - song.id
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showAddSongsDialog = false }) { Text("Done") } }
+            confirmButton = {
+                TextButton(onClick = {
+                    if (selectedSongIds.isNotEmpty()) {
+                        viewModel.addSongsToPlaylist(playlistId, selectedSongIds)
+                    }
+                    showAddSongsDialog = false
+                    dialogSearchQuery = ""
+                    selectedSongIds = emptySet()
+                }) {
+                    Text(if (selectedSongIds.isEmpty()) "Done" else "Add (${selectedSongIds.size})")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddSongsDialog = false
+                    dialogSearchQuery = ""
+                    selectedSongIds = emptySet()
+                }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 

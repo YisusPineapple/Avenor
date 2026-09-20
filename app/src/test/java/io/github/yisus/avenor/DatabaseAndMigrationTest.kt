@@ -8,7 +8,9 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -251,5 +253,83 @@ class DatabaseAndMigrationTest {
         assertEquals("Ludwig van Beethoven", restored?.composer)
         assertEquals("Vienna Philharmonic", restored?.albumArtist)
         assertEquals(1808, restored?.year)
+    }
+
+    @Test
+    fun testPlaybackContextSongsHonorsSortOrdersAndSearch() = runTest(testDispatcher) {
+        val testSongs = listOf(
+            Song(id = 1L, uri = "content://1", title = "Zebra", artist = "Bravo", album = "Echo", durationMs = 300000L, albumArtUri = null, dateAdded = 1000L),
+            Song(id = 2L, uri = "content://2", title = "Alpha", artist = "Charlie", album = "Delta", durationMs = 150000L, albumArtUri = null, dateAdded = 5000L),
+            Song(id = 3L, uri = "content://3", title = "Hotel", artist = "Alpha", album = "Foxtrot", durationMs = 200000L, albumArtUri = null, dateAdded = 3000L)
+        )
+        dao.insertSongs(testSongs)
+
+        // By Title ASC: Alpha (2), Hotel (3), Zebra (1)
+        val byTitle = repo.getPlaybackContextSongs(SongSortOrder.TITLE)
+        assertEquals(listOf(2L, 3L, 1L), byTitle.map { it.id })
+
+        // By Artist ASC: Alpha (3), Bravo (1), Charlie (2)
+        val byArtist = repo.getPlaybackContextSongs(SongSortOrder.ARTIST)
+        assertEquals(listOf(3L, 1L, 2L), byArtist.map { it.id })
+
+        // By Album ASC: Delta (2), Echo (1), Foxtrot (3)
+        val byAlbum = repo.getPlaybackContextSongs(SongSortOrder.ALBUM)
+        assertEquals(listOf(2L, 1L, 3L), byAlbum.map { it.id })
+
+        // By Date Added DESC: 5000 (2), 3000 (3), 1000 (1)
+        val byDate = repo.getPlaybackContextSongs(SongSortOrder.DATE_ADDED)
+        assertEquals(listOf(2L, 3L, 1L), byDate.map { it.id })
+
+        // By Duration DESC: 300000 (1), 200000 (3), 150000 (2)
+        val byDuration = repo.getPlaybackContextSongs(SongSortOrder.DURATION)
+        assertEquals(listOf(1L, 3L, 2L), byDuration.map { it.id })
+
+        // Search query "zebra": only song 1
+        val bySearch = repo.getPlaybackContextSongs(query = "zebra")
+        assertEquals(listOf(1L), bySearch.map { it.id })
+        assertEquals("Zebra", bySearch[0].title)
+
+        // Verify conversion from lightweight item preserves essential audio playback fields
+        val firstSong = byTitle[0]
+        assertEquals(2L, firstSong.id)
+        assertEquals("Alpha", firstSong.title)
+        assertEquals("Charlie", firstSong.artist)
+        assertEquals("Delta", firstSong.album)
+        assertEquals(150000L, firstSong.durationMs)
+    }
+
+    @Test
+    fun testMusicDaoAndRepoGetSongsByIds() = runTest(testDispatcher) {
+        val testSongs = listOf(
+            Song(id = 101L, uri = "content://101", title = "Song A", artist = "Artist A", album = "Album A", durationMs = 120000L, albumArtUri = null),
+            Song(id = 102L, uri = "content://102", title = "Song B", artist = "Artist B", album = "Album B", durationMs = 180000L, albumArtUri = null),
+            Song(id = 103L, uri = "content://103", title = "Song C", artist = "Artist C", album = "Album C", durationMs = 240000L, albumArtUri = null)
+        )
+        dao.insertSongs(testSongs)
+
+        // Point lookup of specific subset of IDs
+        val subset = repo.getSongsByIds(listOf(101L, 103L))
+        assertEquals(2, subset.size)
+        val ids = subset.map { it.id }.toSet()
+        assertTrue(ids.contains(101L))
+        assertTrue(ids.contains(103L))
+        assertFalse(ids.contains(102L))
+
+        // Single ID lookup
+        val single = repo.getSongById(102L)
+        assertNotNull(single)
+        assertEquals("Song B", single?.title)
+
+        // Non-existent ID lookup
+        val notFound = repo.getSongById(999L)
+        assertNull(notFound)
+    }
+
+    @Test
+    fun testSearchOptimizerFuzzyMatchUtility() {
+        assertTrue(SearchOptimizer.fuzzyMatch("", "Anything"))
+        assertTrue(SearchOptimizer.fuzzyMatch("art", "Artist"))
+        assertTrue(SearchOptimizer.fuzzyMatch("sng", "Song"))
+        assertFalse(SearchOptimizer.fuzzyMatch("xyz", "Song"))
     }
 }
