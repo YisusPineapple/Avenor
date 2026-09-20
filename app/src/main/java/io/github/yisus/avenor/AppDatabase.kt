@@ -55,7 +55,14 @@ data class Song(
     val year: Int = 0,
     val genre: String = "",
     val composer: String = "",
-    val albumArtist: String = ""
+    val albumArtist: String = "",
+    val sortTitle: String = "",
+    val comment: String = "",
+    val replayGainTrack: Float? = null,
+    val replayGainAlbum: Float? = null,
+    val artworkWidth: Int = 0,
+    val artworkHeight: Int = 0,
+    val artworkMimeType: String = ""
 )
 
 data class SongHeader(
@@ -632,6 +639,18 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `sortTitle` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `comment` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `replayGainTrack` REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `replayGainAlbum` REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `artworkWidth` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `artworkHeight` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `artworkMimeType` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [
         Song::class,
@@ -646,7 +665,7 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         TrashItem::class,
         Favorite::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -659,7 +678,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

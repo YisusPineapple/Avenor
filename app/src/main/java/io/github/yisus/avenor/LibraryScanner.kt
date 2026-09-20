@@ -30,6 +30,21 @@ class LibraryScanner(
     companion object {
         private const val TAG = "LibraryScanner"
         private const val BATCH_SIZE = 50
+
+        /**
+         * Generates a deterministic sortTitle by trimming and stripping common leading articles
+         * ("The ", "A ", "An ") case-insensitively, providing a stable sort key.
+         */
+        fun generateSortTitle(title: String): String {
+            val trimmed = title.trim()
+            val lower = trimmed.lowercase()
+            return when {
+                lower.startsWith("the ") -> trimmed.substring(4).trim()
+                lower.startsWith("a ") -> trimmed.substring(2).trim()
+                lower.startsWith("an ") -> trimmed.substring(3).trim()
+                else -> trimmed
+            }.ifEmpty { trimmed }
+        }
     }
 
     private val _progress = MutableStateFlow(ScanProgress())
@@ -284,6 +299,7 @@ class LibraryScanner(
         }
 
         val finalBitrate = if (bitrate > 0) bitrate else specs.bitrate
+        val sortTitle = generateSortTitle(title)
 
         return Song(
             id = id,
@@ -308,7 +324,14 @@ class LibraryScanner(
             year = year,
             genre = genre,
             composer = composer,
-            albumArtist = albumArtist
+            albumArtist = albumArtist,
+            sortTitle = sortTitle,
+            comment = "",
+            replayGainTrack = null,
+            replayGainAlbum = null,
+            artworkWidth = 0,
+            artworkHeight = 0,
+            artworkMimeType = ""
         )
     }
 

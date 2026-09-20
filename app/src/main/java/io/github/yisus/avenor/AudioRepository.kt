@@ -87,6 +87,8 @@ class AudioRepository(private val context: Context, dao: MusicDao? = null) {
                     ExtendedMetadataExtractor.AudioSpecs(mimeType = mimeType)
                 }
                 
+                val sortTitle = LibraryScanner.generateSortTitle(title)
+
                 songs.add(
                     Song(
                         id = id,
@@ -111,7 +113,14 @@ class AudioRepository(private val context: Context, dao: MusicDao? = null) {
                         year = year,
                         genre = "",
                         composer = composer,
-                        albumArtist = artist
+                        albumArtist = artist,
+                        sortTitle = sortTitle,
+                        comment = "",
+                        replayGainTrack = null,
+                        replayGainAlbum = null,
+                        artworkWidth = 0,
+                        artworkHeight = 0,
+                        artworkMimeType = ""
                     )
                 )
             }

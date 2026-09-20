@@ -114,27 +114,6 @@ val songsCount: StateFlow<Int> = dbRepo.songsCount.stateIn(viewModelScope, Shari
 val playbackCoordinator = io.github.yisus.avenor.playback.PlaybackCoordinator.getInstance(application)
 val playbackState = playbackCoordinator.playbackState
 
-init {
-    viewModelScope.launch {
-        playbackCoordinator.restorePersistedState()
-    }
-    viewModelScope.launch {
-        playbackCoordinator.playbackState.collect { state ->
-            _queue.value = state.queue
-            currentPlayingList = state.queue
-            if (state.currentSong != null) {
-                _currentSong.value = state.currentSong
-            }
-            _isPlaying.value = state.isPlaying
-            _isShuffleEnabled.value = state.shuffleMode
-            _repeatMode.value = state.repeatMode
-            if (_currentPosition.value == 0L && state.currentPositionMs > 0L) {
-                _currentPosition.value = state.currentPositionMs
-            }
-        }
-    }
-}
-
 // Note: songs StateFlow removed to prevent retaining full library in memory. Use pagedSongs for UI and targeted Room lookups.
 val history: StateFlow<List<Song>> = dbRepo.recentHistory.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 val playlists: StateFlow<List<Playlist>> = dbRepo.allPlaylists.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -252,6 +231,27 @@ private var currentPlayingList: List<Song> = emptyList()
     
     private val _selectedSongs = MutableStateFlow<Set<Long>>(emptySet())
     val selectedSongs: StateFlow<Set<Long>> = _selectedSongs.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            playbackCoordinator.restorePersistedState()
+        }
+        viewModelScope.launch {
+            playbackCoordinator.playbackState.collect { state ->
+                _queue.value = state.queue
+                currentPlayingList = state.queue
+                if (state.currentSong != null) {
+                    _currentSong.value = state.currentSong
+                }
+                _isPlaying.value = state.isPlaying
+                _isShuffleEnabled.value = state.shuffleMode
+                _repeatMode.value = state.repeatMode
+                if (_currentPosition.value == 0L && state.currentPositionMs > 0L) {
+                    _currentPosition.value = state.currentPositionMs
+                }
+            }
+        }
+    }
 
     fun toggleSelection(songId: Long) {
         val current = _selectedSongs.value.toMutableSet()

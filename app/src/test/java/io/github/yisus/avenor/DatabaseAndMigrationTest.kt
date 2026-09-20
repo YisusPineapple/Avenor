@@ -2,10 +2,13 @@ package io.github.yisus.avenor
 
 import androidx.room.Room
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.paging.PagingSource
 import io.github.yisus.avenor.DatabaseExport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -331,5 +334,214 @@ class DatabaseAndMigrationTest {
         assertTrue(SearchOptimizer.fuzzyMatch("art", "Artist"))
         assertTrue(SearchOptimizer.fuzzyMatch("sng", "Song"))
         assertFalse(SearchOptimizer.fuzzyMatch("xyz", "Song"))
+    }
+
+    @Test
+    fun testMigration14To15AddsAllColumnsAndPreservesData() {
+        val context = RuntimeEnvironment.getApplication()
+        val dbFile = context.getDatabasePath("test_migration_14_15.db")
+        if (dbFile.exists()) dbFile.delete()
+
+        // Create a raw SQLite DB simulating version 14 schema
+        val helperConfig = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name("test_migration_14_15.db")
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(14) {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `songs` (
+                            `id` INTEGER NOT NULL, 
+                            `uri` TEXT NOT NULL, 
+                            `title` TEXT NOT NULL, 
+                            `artist` TEXT NOT NULL, 
+                            `album` TEXT NOT NULL, 
+                            `durationMs` INTEGER NOT NULL, 
+                            `albumArtUri` TEXT, 
+                            `bitDepth` INTEGER NOT NULL, 
+                            `sampleRate` INTEGER NOT NULL, 
+                            `mimeType` TEXT NOT NULL, 
+                            `fileExtension` TEXT NOT NULL,
+                            `codec` TEXT NOT NULL,
+                            `bitrate` INTEGER NOT NULL,
+                            `channels` INTEGER NOT NULL,
+                            `fileSize` INTEGER NOT NULL,
+                            `dateModified` INTEGER NOT NULL,
+                            `dateAdded` INTEGER NOT NULL,
+                            `trackNumber` INTEGER NOT NULL,
+                            `discNumber` INTEGER NOT NULL,
+                            `year` INTEGER NOT NULL,
+                            `genre` TEXT NOT NULL,
+                            `composer` TEXT NOT NULL,
+                            `albumArtist` TEXT NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+                    db.execSQL("""
+                        INSERT INTO `songs` VALUES (
+                            201, 'content://audio/201', 'Existing Song', 'The Band', 'First Album', 
+                            185000, 'content://art/1', 24, 96000, 'audio/flac', 'flac', 
+                            'FLAC', 2500000, 2, 50000000, 1700000000, 1700000100, 
+                            3, 1, 2023, 'Rock', 'Composer X', 'The Band'
+                        )
+                    """.trimIndent())
+                }
+
+                override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(helperConfig)
+        val writableDb = helper.writableDatabase
+
+        // Execute Migration 14 -> 15
+        MIGRATION_14_15.migrate(writableDb)
+
+        // Verify newly added columns exist and existing row survived with expected defaults
+        val cursor = writableDb.query("SELECT id, title, sortTitle, comment, replayGainTrack, replayGainAlbum, artworkWidth, artworkHeight, artworkMimeType FROM songs WHERE id = 201")
+        assertTrue("Migrated row must exist", cursor.moveToFirst())
+        assertEquals(201L, cursor.getLong(0))
+        assertEquals("Existing Song", cursor.getString(1))
+        assertEquals("", cursor.getString(2)) // sortTitle default
+        assertEquals("", cursor.getString(3)) // comment default
+        assertTrue(cursor.isNull(4)) // replayGainTrack default null
+        assertTrue(cursor.isNull(5)) // replayGainAlbum default null
+        assertEquals(0, cursor.getInt(6)) // artworkWidth default
+        assertEquals(0, cursor.getInt(7)) // artworkHeight default
+        assertEquals("", cursor.getString(8)) // artworkMimeType default
+        cursor.close()
+
+        writableDb.close()
+        dbFile.delete()
+    }
+
+    @Test
+    fun testSongPersistenceAndRetrievalWithNewFields() = runTest(testDispatcher) {
+        val richSong = Song(
+            id = 501L,
+            uri = "content://audio/501",
+            title = "The Bohemian Rhapsody",
+            artist = "Queen",
+            album = "A Night at the Opera",
+            durationMs = 354000L,
+            albumArtUri = "content://art/queen",
+            sortTitle = "Bohemian Rhapsody",
+            comment = "Original 1975 Master",
+            replayGainTrack = -7.45f,
+            replayGainAlbum = -6.20f,
+            artworkWidth = 1400,
+            artworkHeight = 1400,
+            artworkMimeType = "image/jpeg"
+        )
+        dao.insertSongs(listOf(richSong))
+
+        val retrieved = dao.getSongById(501L)
+        assertNotNull(retrieved)
+        assertEquals("Bohemian Rhapsody", retrieved!!.sortTitle)
+        assertEquals("Original 1975 Master", retrieved.comment)
+        assertNotNull(retrieved.replayGainTrack)
+        assertEquals(-7.45f, retrieved.replayGainTrack!!, 0.001f)
+        assertNotNull(retrieved.replayGainAlbum)
+        assertEquals(-6.20f, retrieved.replayGainAlbum!!, 0.001f)
+        assertEquals(1400, retrieved.artworkWidth)
+        assertEquals(1400, retrieved.artworkHeight)
+        assertEquals("image/jpeg", retrieved.artworkMimeType)
+    }
+
+    @Test
+    fun testDeterministicSortTitleGeneration() {
+        assertEquals("Beatles", LibraryScanner.generateSortTitle("The Beatles"))
+        assertEquals("Hard Day's Night", LibraryScanner.generateSortTitle("A Hard Day's Night"))
+        assertEquals("Evening With...", LibraryScanner.generateSortTitle("An Evening With..."))
+        assertEquals("Yesterday", LibraryScanner.generateSortTitle("Yesterday"))
+        assertEquals("Chain", LibraryScanner.generateSortTitle("   The Chain   "))
+        assertEquals("", LibraryScanner.generateSortTitle(""))
+    }
+
+    @Test
+    fun testSongSerializationWithNewFieldsAndBackwardCompatibility() {
+        val richSong = Song(
+            id = 601L,
+            uri = "content://audio/601",
+            title = "Hotel California",
+            artist = "Eagles",
+            album = "Hotel California",
+            durationMs = 390000L,
+            albumArtUri = null,
+            sortTitle = "Hotel California",
+            comment = "Remastered",
+            replayGainTrack = -8.1f,
+            replayGainAlbum = -7.3f,
+            artworkWidth = 800,
+            artworkHeight = 800,
+            artworkMimeType = "image/png"
+        )
+
+        val jsonString = BackupManager.jsonFormat.encodeToString(richSong)
+        val decodedSong = BackupManager.jsonFormat.decodeFromString<Song>(jsonString)
+        assertEquals(richSong, decodedSong)
+
+        // Backward compatibility: JSON produced by older app version without the 7 new fields
+        val legacyJson = """
+            {
+                "id": 602,
+                "uri": "content://audio/602",
+                "title": "Legacy Song",
+                "artist": "Legacy Artist",
+                "album": "Legacy Album",
+                "durationMs": 180000,
+                "albumArtUri": null,
+                "bitDepth": 16,
+                "sampleRate": 44100,
+                "mimeType": "audio/mpeg",
+                "fileExtension": "mp3",
+                "codec": "MP3",
+                "bitrate": 320000,
+                "channels": 2,
+                "fileSize": 5000000,
+                "dateModified": 1000,
+                "dateAdded": 2000,
+                "trackNumber": 1,
+                "discNumber": 1,
+                "year": 2020,
+                "genre": "Pop",
+                "composer": "Composer",
+                "albumArtist": "Legacy Artist"
+            }
+        """.trimIndent()
+
+        val fromLegacy = BackupManager.jsonFormat.decodeFromString<Song>(legacyJson)
+        assertEquals(602L, fromLegacy.id)
+        assertEquals("", fromLegacy.sortTitle)
+        assertEquals("", fromLegacy.comment)
+        assertNull(fromLegacy.replayGainTrack)
+        assertNull(fromLegacy.replayGainAlbum)
+        assertEquals(0, fromLegacy.artworkWidth)
+        assertEquals(0, fromLegacy.artworkHeight)
+        assertEquals("", fromLegacy.artworkMimeType)
+    }
+
+    @Test
+    fun testPagingWithExtendedSongModel() = runTest(testDispatcher) {
+        val testSongs = listOf(
+            Song(id = 701L, uri = "content://701", title = "The First Song", artist = "Artist A", album = "Album A", durationMs = 120000L, albumArtUri = null, sortTitle = "First Song", replayGainTrack = -5.0f),
+            Song(id = 702L, uri = "content://702", title = "A Second Song", artist = "Artist B", album = "Album B", durationMs = 180000L, albumArtUri = null, sortTitle = "Second Song", replayGainTrack = -3.2f)
+        )
+        dao.insertSongs(testSongs)
+
+        val pagingSource = dao.getPagedSongs()
+        val loadResult = pagingSource.load(
+            PagingSource.LoadParams.Refresh(
+                key = null,
+                loadSize = 10,
+                placeholdersEnabled = false
+            )
+        )
+
+        assertTrue(loadResult is PagingSource.LoadResult.Page<*, *>)
+        @Suppress("UNCHECKED_CAST")
+        val page = loadResult as PagingSource.LoadResult.Page<Int, Song>
+        assertEquals(2, page.data.size)
+        val first = page.data.first { it.id == 701L }
+        assertEquals("First Song", first.sortTitle)
+        assertEquals(-5.0f, first.replayGainTrack!!, 0.001f)
     }
 }
