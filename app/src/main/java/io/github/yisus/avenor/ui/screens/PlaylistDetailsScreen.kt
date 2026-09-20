@@ -136,7 +136,7 @@ fun PlaylistDetailsScreen(viewModel: PlaybackViewModel, playlistId: Int) {
                                     initialName = song.title,
                                     onDismiss = { showRename = false },
                                     onRename = { newName: String -> 
-                                        viewModel.renameSong(song.id.toInt(), newName)
+                                        viewModel.renameSong(song.id, newName)
                                         showRename = false
                                     }
                                 )

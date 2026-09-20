@@ -211,8 +211,6 @@ interface MusicDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     suspend fun getSongById(id: Long): Song?
 
-    suspend fun getSongById(id: Int): Song? = getSongById(id.toLong())
-
     @Query("SELECT id, dateModified, fileSize FROM songs")
     suspend fun getAllSongHeaders(): List<SongHeader>
 
@@ -372,7 +370,7 @@ interface MusicDao {
     suspend fun clearTrashItems()
 
     @Query("UPDATE songs SET title = :newTitle WHERE id = :id")
-    suspend fun renameSong(id: Int, newTitle: String)
+    suspend fun renameSong(id: Long, newTitle: String)
 
     @Query("UPDATE playlists SET name = :newName WHERE id = :id")
     suspend fun renamePlaylist(id: Int, newName: String)

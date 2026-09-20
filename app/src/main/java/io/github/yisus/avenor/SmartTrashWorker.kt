@@ -20,7 +20,7 @@ class SmartTrashWorker(context: Context, params: WorkerParameters) : CoroutineWo
             
             expiredItems.forEach { item ->
                 try {
-                    val uri = Uri.parse(dao.getSongById(item.songId.toInt())?.uri ?: "")
+                    val uri = Uri.parse(dao.getSongById(item.songId)?.uri ?: "")
                     if (uri.scheme == "file") {
                         val file = File(uri.path!!)
                         if (file.exists()) file.delete()
@@ -28,7 +28,7 @@ class SmartTrashWorker(context: Context, params: WorkerParameters) : CoroutineWo
                         applicationContext.contentResolver.delete(uri, null, null)
                     }
                 } catch(e: Exception) {
-                    Log.e("SmartTrashWorker", "Could not delete file: ${dao.getSongById(item.songId.toInt())?.uri ?: ""}", e)
+                    Log.e("SmartTrashWorker", "Could not delete file: ${dao.getSongById(item.songId)?.uri ?: ""}", e)
                 }
                 Log.d("SmartTrashWorker", "Purging song ID: ${item.songId}")
                 dao.deleteTrashItem(item.songId)

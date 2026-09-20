@@ -487,7 +487,7 @@ fun setLyricsOffset(offset: Long) {
         val allItems = dbRepo.dao.getExpiredTrashItems(Long.MAX_VALUE)
         allItems.forEach { item ->
             try {
-                val uri = android.net.Uri.parse(dbRepo.dao.getSongById(item.songId.toInt())?.uri ?: "")
+                val uri = android.net.Uri.parse(dbRepo.dao.getSongById(item.songId)?.uri ?: "")
                 if (uri.scheme == "file") {
                     val file = java.io.File(uri.path!!)
                     if (file.exists()) file.delete()
@@ -501,11 +501,9 @@ fun setLyricsOffset(offset: Long) {
 
     fun renameSong(id: Long, newTitle: String) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            dbRepo.dao.renameSong(id.toInt(), newTitle)
+            dbRepo.dao.renameSong(id, newTitle)
         }
     }
-
-    fun renameSong(id: Int, newTitle: String) = renameSong(id.toLong(), newTitle)
 
 fun skipToNext() { controller?.seekToNextMediaItem() }
 fun skipToPrevious() { controller?.seekToPreviousMediaItem() }

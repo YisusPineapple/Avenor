@@ -61,7 +61,7 @@ fun TrashRecoveryScreen(viewModel: PlaybackViewModel, onBack: () -> Unit) {
                         val item = items[index]
                         var songTitle by remember { mutableStateOf("Unknown") }
                         LaunchedEffect(item.songId) {
-                            val song = viewModel.dbRepo.dao.getSongById(item.songId.toInt())
+                            val song = viewModel.dbRepo.dao.getSongById(item.songId)
                             songTitle = song?.title ?: "Unknown"
                         }
                         
