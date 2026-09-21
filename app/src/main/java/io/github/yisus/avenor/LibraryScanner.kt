@@ -25,7 +25,11 @@ data class ScanProgress(
 
 class LibraryScanner(
     private val context: Context,
-    private val dao: MusicDao
+    private val dao: MusicDao,
+    val exclusionPolicy: FolderExclusionPolicy = FolderExclusionPolicy(
+        storage = SharedPreferencesFolderExclusionStorage(context.applicationContext),
+        noMediaDetector = DefaultNoMediaDetector()
+    )
 ) {
     companion object {
         private const val TAG = "LibraryScanner"
@@ -58,6 +62,7 @@ class LibraryScanner(
 
     suspend fun scan(): ScanProgress = withContext(Dispatchers.IO) {
         _progress.value = ScanProgress(isScanning = true)
+        exclusionPolicy.clearNoMediaCache()
         var newCount = 0
         var modifiedCount = 0
         var deletedCount = 0
@@ -69,11 +74,16 @@ class LibraryScanner(
 
             val mediaStoreHeaders = mutableMapOf<Long, MediaStoreItemHeader>()
             val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-            val headerProjection = arrayOf(
+            val headerProjectionList = mutableListOf(
                 MediaStore.Audio.Media._ID,
                 MediaStore.Audio.Media.DATE_MODIFIED,
-                MediaStore.Audio.Media.SIZE
+                MediaStore.Audio.Media.SIZE,
+                MediaStore.Audio.Media.DATA
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                headerProjectionList.add(MediaStore.Audio.Media.RELATIVE_PATH)
+            }
+            val headerProjection = headerProjectionList.toTypedArray()
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
 
             context.contentResolver.query(
@@ -86,11 +96,23 @@ class LibraryScanner(
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val dateModCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+                val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+                val relPathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+                } else -1
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val dateMod = cursor.getLong(dateModCol)
                     val size = cursor.getLong(sizeCol)
+                    val filePath = if (dataCol != -1 && !cursor.isNull(dataCol)) cursor.getString(dataCol) else null
+                    val relativePath = if (relPathCol != -1 && !cursor.isNull(relPathCol)) cursor.getString(relPathCol) else null
+
+                    // Exclude based on folder rules and .nomedia
+                    if (exclusionPolicy.isExcluded(filePath, relativePath)) {
+                        continue
+                    }
+
                     mediaStoreHeaders[id] = MediaStoreItemHeader(id, dateMod, size)
                 }
             }
@@ -206,6 +228,59 @@ class LibraryScanner(
             errorProgress
         }
     }
+
+    /**
+     * Queries and parses all audio files from MediaStore matching the music filter.
+     * Centralizes the MediaStore projection, selection, and Song mapping to avoid duplicate implementations.
+     */
+    suspend fun queryLocalAudioFiles(): List<Song> = withContext(Dispatchers.IO) {
+        val songs = mutableListOf<Song>()
+        val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        val projection = getProjection()
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+        val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+
+        try {
+            context.contentResolver.query(
+                collection,
+                projection,
+                selection,
+                null,
+                sortOrder
+            )?.use { cursor ->
+                val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+                val relPathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+                } else -1
+
+                while (cursor.moveToNext()) {
+                    try {
+                        val filePath = if (dataCol != -1 && !cursor.isNull(dataCol)) cursor.getString(dataCol) else null
+                        val relativePath = if (relPathCol != -1 && !cursor.isNull(relPathCol)) cursor.getString(relPathCol) else null
+
+                        if (exclusionPolicy.isExcluded(filePath, relativePath)) {
+                            continue
+                        }
+
+                        songs.add(extractSongFromCursor(cursor))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error extracting song from cursor", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query local audio files", e)
+        }
+        songs
+    }
+
+    fun getExcludedFolders(): Set<String> = exclusionPolicy.getExcludedFolders()
+
+    fun addExcludedFolder(path: String) = exclusionPolicy.addExcludedFolder(path)
+
+    fun removeExcludedFolder(path: String) = exclusionPolicy.removeExcludedFolder(path)
+
+    fun setExcludedFolders(folders: Set<String>) = exclusionPolicy.setExcludedFolders(folders)
 
     private fun getProjection(): Array<String> {
         val list = mutableListOf(

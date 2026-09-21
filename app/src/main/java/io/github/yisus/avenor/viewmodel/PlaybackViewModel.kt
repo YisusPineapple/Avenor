@@ -127,6 +127,24 @@ val appSettings: StateFlow<AppSetting?> = dbRepo.appSettings.stateIn(viewModelSc
     val favoriteSongs: StateFlow<List<Song>> = dbRepo.favoriteSongs.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val favoriteSongIds: StateFlow<List<Long>> = dbRepo.favoriteSongIds.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    private val _excludedFolders = MutableStateFlow<Set<String>>(audioRepo.getExcludedFolders())
+    val excludedFolders: StateFlow<Set<String>> = _excludedFolders.asStateFlow()
+
+    fun addExcludedFolder(path: String) {
+        audioRepo.addExcludedFolder(path)
+        _excludedFolders.value = audioRepo.getExcludedFolders()
+    }
+
+    fun removeExcludedFolder(path: String) {
+        audioRepo.removeExcludedFolder(path)
+        _excludedFolders.value = audioRepo.getExcludedFolders()
+    }
+
+    fun setExcludedFolders(folders: Set<String>) {
+        audioRepo.setExcludedFolders(folders)
+        _excludedFolders.value = audioRepo.getExcludedFolders()
+    }
+
     private val _currentLyrics = MutableStateFlow<List<io.github.yisus.avenor.lyrics.LyricLine>>(emptyList())
     val currentLyrics: StateFlow<List<io.github.yisus.avenor.lyrics.LyricLine>> = _currentLyrics.asStateFlow()
 

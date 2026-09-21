@@ -544,4 +544,41 @@ class DatabaseAndMigrationTest {
         assertEquals("First Song", first.sortTitle)
         assertEquals(-5.0f, first.replayGainTrack!!, 0.001f)
     }
+
+    @Test
+    fun testRoomSchemaExportAndIntegrity() {
+        val schemaFileCandidates = listOf(
+            java.io.File("schemas/io.github.yisus.avenor.AppDatabase/15.json"),
+            java.io.File("app/schemas/io.github.yisus.avenor.AppDatabase/15.json")
+        )
+        val schemaFile = schemaFileCandidates.firstOrNull { it.exists() }
+        assertNotNull("Exported schema 15.json must exist in schemas directory", schemaFile)
+        val content = schemaFile!!.readText()
+        assertTrue("Schema must define database version 15", content.contains("\"version\": 15"))
+        assertTrue("Schema must contain songs table", content.contains("\"tableName\": \"songs\""))
+        assertTrue("Schema must contain sortTitle", content.contains("\"columnName\": \"sortTitle\""))
+        assertTrue("Schema must contain replayGainTrack", content.contains("\"columnName\": \"replayGainTrack\""))
+        assertTrue("Schema must contain favorites table", content.contains("\"tableName\": \"favorites\""))
+        assertTrue("Schema must contain playback_queues table", content.contains("\"tableName\": \"playback_queues\""))
+    }
+
+    @Test
+    fun testAudioRepositoryDelegatesToLibraryScanner() = runTest(testDispatcher) {
+        val context = RuntimeEnvironment.getApplication()
+        val audioRepo = AudioRepository(context, dao)
+
+        // Assert that AudioRepository delegates its scanner instance and progress StateFlow
+        assertNotNull(audioRepo.scanner)
+        assertEquals(audioRepo.scanner.progress, audioRepo.scanProgress)
+
+        // Assert queryLocalAudioFiles returns non-null list via scanner delegation
+        val songs = audioRepo.getLocalAudioFiles()
+        assertNotNull(songs)
+        assertTrue(songs.isEmpty())
+
+        // Assert scanLibrary delegates directly to scanner.scan()
+        val scanResult = audioRepo.scanLibrary()
+        assertNotNull(scanResult)
+        assertFalse(scanResult.isScanning)
+    }
 }

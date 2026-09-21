@@ -137,7 +137,6 @@ class DatabaseRepository(val dao: MusicDao) {
     suspend fun removeSongFromPlaylist(playlistId: Int, songId: Long) = dao.removeSongFromPlaylist(playlistId, songId)
     suspend fun saveEqPreset(name: String, bands: List<Float>) = dao.insertEqPreset(EqPreset(name = name, bands = bands.joinToString(",")))
     suspend fun saveSettings(setting: AppSetting) = dao.saveSettings(setting)
-    
     suspend fun saveLyricOffset(songId: Long, offsetMs: Long) = dao.saveLyricOffset(LyricOffset(songId, offsetMs))
     suspend fun getLyricOffset(songId: Long): Long? = dao.getLyricOffset(songId)
 }

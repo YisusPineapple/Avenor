@@ -153,19 +153,43 @@ val bands: String
 @Entity(tableName = "app_settings")
 @Serializable
 data class AppSetting(
-@PrimaryKey val id: Int = 1,
-val performanceMode: String = "VIVID", // ECO, BALANCED, VIVID
-val autoEq: Boolean = false,
-val showLike: Boolean = true,
-val showShuffle: Boolean = true,
-val showRepeat: Boolean = true,
-val autoFillQueue: Boolean = false,
-val themeStyle: String = "WARMTH", // WARMTH, AURORA, SOFT_UI, EXPRESSIVE
-val albumArtResolution: String = "HIGH", // LOW, MEDIUM, HIGH, ORIGINAL
-val isFirstLaunch: Boolean = true,
-val nowPlayingStyle: String = "CLASSIC", // CLASSIC, EXPRESSIVE, APPLE_MUSIC
-val trashPurgeDays: Int = 30 // 7, 15, 30
-)
+    @PrimaryKey val id: Int = 1,
+    val performanceMode: String = "VIVID", // ECO, BALANCED, VIVID
+    val autoEq: Boolean = false,
+    val showLike: Boolean = true,
+    val showShuffle: Boolean = true,
+    val showRepeat: Boolean = true,
+    val autoFillQueue: Boolean = false,
+    val themeStyle: String = "WARMTH", // WARMTH, AURORA, SOFT_UI, EXPRESSIVE
+    val albumArtResolution: String = "HIGH", // LOW, MEDIUM, HIGH, ORIGINAL
+    val isFirstLaunch: Boolean = true,
+    val nowPlayingStyle: String = "CLASSIC", // CLASSIC, EXPRESSIVE, APPLE_MUSIC
+    val trashPurgeDays: Int = 30, // 7, 15, 30
+    val excludedFolders: String = ""
+) {
+    fun getExcludedFoldersList(): List<String> {
+        if (excludedFolders.isBlank()) return emptyList()
+        return excludedFolders.split('\n')
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+    }
+
+    fun withAddedExcludedFolder(folderPath: String): AppSetting {
+        val normalized = PathNormalizer.normalize(folderPath).lowercase()
+        if (normalized.isBlank()) return this
+        val current = getExcludedFoldersList().toMutableSet()
+        current.add(normalized)
+        return copy(excludedFolders = current.joinToString("\n"))
+    }
+
+    fun withRemovedExcludedFolder(folderPath: String): AppSetting {
+        val normalized = PathNormalizer.normalize(folderPath).lowercase()
+        val current = getExcludedFoldersList().toMutableSet()
+        current.remove(normalized)
+        current.remove(folderPath.trim().lowercase())
+        return copy(excludedFolders = current.joinToString("\n"))
+    }
+}
 
 
 
@@ -651,6 +675,12 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `excludedFolders` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [
         Song::class,
@@ -665,8 +695,8 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         TrashItem::class,
         Favorite::class
     ],
-    version = 15,
-    exportSchema = false
+    version = 16,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun musicDao(): MusicDao
@@ -678,7 +708,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
