@@ -7,7 +7,11 @@ import android.net.Uri
 import android.util.Log
 import java.io.File
 
-object ExtendedMetadataExtractor {
+interface MetadataExtractor {
+    fun extract(context: Context, uri: Uri, filePath: String? = null): ExtendedMetadataExtractor.AudioSpecs
+}
+
+object ExtendedMetadataExtractor : MetadataExtractor {
     private const val TAG = "ExtendedMetadataExtractor"
 
     data class AudioSpecs(
@@ -20,7 +24,7 @@ object ExtendedMetadataExtractor {
         val channels: Int = 2
     )
 
-    fun extract(context: Context, uri: Uri, filePath: String? = null): AudioSpecs {
+    override fun extract(context: Context, uri: Uri, filePath: String?): AudioSpecs {
         var bitDepth = 16
         var sampleRate = 44100
         var mimeType = "audio/mpeg"

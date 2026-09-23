@@ -581,4 +581,329 @@ class DatabaseAndMigrationTest {
         assertNotNull(scanResult)
         assertFalse(scanResult.isScanning)
     }
+
+    // =========================================================================
+    // P1-3B.1 MANDATORY TESTS: EXCLUSION INTEGRITY & DATA PRESERVATION
+    // =========================================================================
+
+    // Test 1: Canción existente + Favorite + exclusión -> Song permanece, Favorite permanece
+    @Test
+    fun testExistingSongWithFavoriteSurvivesExclusion() = runTest(testDispatcher) {
+        val song = Song(id = 801L, uri = "content://801", title = "Favorite Song", artist = "Artist 1", album = "Album 1", durationMs = 150000L, albumArtUri = null)
+        dao.insertSongs(listOf(song))
+        dao.addFavorite(Favorite(songId = 801L, addedAt = 1000L))
+
+        // Pre-condition: Favorite exists and Song is in active library
+        assertEquals(1, dao.getSongsCountSync())
+        assertTrue(dao.isFavoriteSync(801L))
+
+        // Exclude song
+        dao.updateSongsExcludedStatus(listOf(801L), true)
+
+        // Song remains in Room
+        val excludedSong = dao.getSongById(801L)
+        assertNotNull("Song must NOT be deleted from Room upon exclusion", excludedSong)
+        assertTrue("Song must be marked as excluded", excludedSong!!.isExcludedFromLibrary)
+
+        // Favorite remains intact in Room (not cascade-deleted)
+        assertTrue("Favorite relation must be preserved when song is excluded", dao.isFavoriteSync(801L))
+        val allFavorites = dao.getAllFavoritesSync()
+        assertTrue(allFavorites.any { it.songId == 801L })
+
+        // Active library count excludes it
+        assertEquals(0, dao.getSongsCountSync())
+    }
+
+    // Test 2: Canción existente + PlaylistSongCrossRef + exclusión -> Song permanece, relación permanece
+    @Test
+    fun testExistingSongWithPlaylistSurvivesExclusion() = runTest(testDispatcher) {
+        val song = Song(id = 802L, uri = "content://802", title = "Playlist Song", artist = "Artist 2", album = "Album 2", durationMs = 160000L, albumArtUri = null)
+        dao.insertSongs(listOf(song))
+        val playlistId = 10
+        dao.insertPlaylist(Playlist(id = playlistId, name = "Test Playlist"))
+        dao.insertSongToPlaylist(PlaylistSongCrossRef(playlistId = playlistId, songId = 802L, addedAt = 1000L))
+
+        // Pre-condition: Relation exists
+        val initialPlaylistSongs = dao.getAllPlaylistSongsSync()
+        assertTrue(initialPlaylistSongs.any { it.playlistId == playlistId && it.songId == 802L })
+
+        // Exclude song
+        dao.updateSongsExcludedStatus(listOf(802L), true)
+
+        // Song remains in Room
+        val excludedSong = dao.getSongById(802L)
+        assertNotNull("Song must NOT be deleted from Room", excludedSong)
+        assertTrue(excludedSong!!.isExcludedFromLibrary)
+
+        // Playlist relation remains intact in Room (not cascade-deleted)
+        val postPlaylistSongs = dao.getAllPlaylistSongsSync()
+        assertTrue("PlaylistSongCrossRef must remain intact when song is excluded", postPlaylistSongs.any { it.playlistId == playlistId && it.songId == 802L })
+    }
+
+    // Test 3: Canción existente + ListeningHistory + exclusión -> Song permanece, historial permanece
+    @Test
+    fun testExistingSongWithListeningHistorySurvivesExclusion() = runTest(testDispatcher) {
+        val song = Song(id = 803L, uri = "content://803", title = "History Song", artist = "Artist 3", album = "Album 3", durationMs = 170000L, albumArtUri = null)
+        dao.insertSongs(listOf(song))
+        dao.insertHistory(ListeningHistory(id = 1, songId = 803L, playedAt = 2000L))
+
+        // Pre-condition: History exists
+        val initialHistory = dao.getAllHistorySync()
+        assertTrue(initialHistory.any { it.songId == 803L })
+
+        // Exclude song
+        dao.updateSongsExcludedStatus(listOf(803L), true)
+
+        // Song remains in Room
+        val excludedSong = dao.getSongById(803L)
+        assertNotNull("Song must NOT be deleted from Room", excludedSong)
+        assertTrue(excludedSong!!.isExcludedFromLibrary)
+
+        // History remains intact in Room (not cascade-deleted)
+        val postHistory = dao.getAllHistorySync()
+        assertTrue("ListeningHistory must remain intact when song is excluded", postHistory.any { it.songId == 803L })
+    }
+
+    // Test 4: Song + múltiples relaciones + exclusión -> ninguna relación se pierde
+    @Test
+    fun testSongWithMultipleRelationsSurvivesExclusionWithoutDataLoss() = runTest(testDispatcher) {
+        val song = Song(id = 804L, uri = "content://804", title = "Multi Relation Song", artist = "Artist 4", album = "Album 4", durationMs = 180000L, albumArtUri = null)
+        dao.insertSongs(listOf(song))
+
+        // 1. Favorite
+        dao.addFavorite(Favorite(songId = 804L, addedAt = 1000L))
+        // 2. Playlist
+        val playlistId = 20
+        dao.insertPlaylist(Playlist(id = playlistId, name = "Multi Playlist"))
+        dao.insertSongToPlaylist(PlaylistSongCrossRef(playlistId = playlistId, songId = 804L, addedAt = 1000L))
+        // 3. History
+        dao.insertHistory(ListeningHistory(id = 2, songId = 804L, playedAt = 2000L))
+        // 4. Queue
+        dao.insertPlaybackQueue(PlaybackQueue(id = 2, name = "Multi Queue"))
+        dao.insertQueueSongs(listOf(QueueSong(queueId = 2, songId = 804L, positionIndex = 0)))
+        // 5. Smart Trash
+        dao.insertTrashItem(TrashItem(songId = 804L, deletedAt = 3000L))
+
+        // Exclude song
+        dao.updateSongsExcludedStatus(listOf(804L), true)
+
+        // Verify Song persists and is marked excluded
+        val songInDb = dao.getSongById(804L)
+        assertNotNull(songInDb)
+        assertTrue(songInDb!!.isExcludedFromLibrary)
+
+        // Verify all relations are 100% intact
+        assertTrue("Favorite must survive exclusion", dao.isFavoriteSync(804L))
+        assertTrue("Playlist relation must survive exclusion", dao.getAllPlaylistSongsSync().any { it.playlistId == playlistId && it.songId == 804L })
+        assertTrue("Listening history must survive exclusion", dao.getAllHistorySync().any { it.songId == 804L })
+        assertTrue("Queue song must survive exclusion", dao.getQueueSongsSync(2).any { it.songId == 804L })
+        assertNotNull("Trash item must survive exclusion", dao.getAllTrashItemsSync().firstOrNull { it.songId == 804L })
+    }
+
+    // Test 5: Excluir -> volver a incluir -> mismo Song.id, no duplicación, relaciones intactas
+    @Test
+    fun testExcludeAndReIncludeCyclePreservesIdRelationsAndPreventsDuplication() = runTest(testDispatcher) {
+        val song = Song(id = 805L, uri = "content://805", title = "Re-include Song", artist = "Artist 5", album = "Album 5", durationMs = 190000L, albumArtUri = null)
+        dao.insertSongs(listOf(song))
+        dao.addFavorite(Favorite(songId = 805L))
+        val playlistId = 30
+        dao.insertPlaylist(Playlist(id = playlistId, name = "Re-include Playlist"))
+        dao.insertSongToPlaylist(PlaylistSongCrossRef(playlistId = playlistId, songId = 805L))
+        dao.insertHistory(ListeningHistory(id = 3, songId = 805L, playedAt = 5000L))
+
+        // 1. Exclude
+        dao.updateSongsExcludedStatus(listOf(805L), true)
+        assertEquals(0, dao.getSongsCountSync())
+        assertTrue(dao.getSongById(805L)!!.isExcludedFromLibrary)
+
+        // 2. Re-include
+        dao.updateSongsExcludedStatus(listOf(805L), false)
+
+        // Assertions:
+        // - Available in active library
+        assertEquals(1, dao.getSongsCountSync())
+        val retrieved = dao.getSongById(805L)
+        assertNotNull(retrieved)
+        assertEquals(805L, retrieved!!.id)
+        assertFalse(retrieved.isExcludedFromLibrary)
+
+        // - No duplication in database
+        val allSongs = dao.getAllSongsSync()
+        assertEquals(1, allSongs.count { it.id == 805L })
+
+        // - All relations preserved
+        assertTrue(dao.isFavoriteSync(805L))
+        assertTrue(dao.getAllPlaylistSongsSync().any { it.playlistId == playlistId && it.songId == 805L })
+        assertTrue(dao.getAllHistorySync().any { it.songId == 805L })
+    }
+
+    // Test 6: Archivo físicamente eliminado -> sigue utilizándose physicalDeletedIds, eliminación normal continúa funcionando
+    @Test
+    fun testPhysicalDeletionRemovesSongAndCascadesNormally() = runTest(testDispatcher) {
+        val song1 = Song(id = 806L, uri = "content://806", title = "To Be Deleted", artist = "Artist 6", album = "Album 6", durationMs = 100000L, albumArtUri = null)
+        val song2 = Song(id = 807L, uri = "content://807", title = "To Stay", artist = "Artist 7", album = "Album 7", durationMs = 100000L, albumArtUri = null)
+        dao.insertSongs(listOf(song1, song2))
+        dao.addFavorite(Favorite(songId = 806L))
+        dao.addFavorite(Favorite(songId = 807L))
+
+        assertEquals(2, dao.getSongsCountSync())
+        assertTrue(dao.isFavoriteSync(806L))
+        assertTrue(dao.isFavoriteSync(807L))
+
+        // Physical deletion (e.g. file removed from media store)
+        val physicalDeletedIds = listOf(806L)
+        dao.deleteSongsByIds(physicalDeletedIds)
+
+        // Song 806 is permanently deleted, song 807 remains
+        assertNull(dao.getSongById(806L))
+        assertNotNull(dao.getSongById(807L))
+        assertEquals(1, dao.getSongsCountSync())
+
+        // Favorite cascade deleted for 806L, preserved for 807L
+        assertFalse(dao.isFavoriteSync(806L))
+        assertTrue(dao.isFavoriteSync(807L))
+    }
+
+    // Test 7: Canción nueva dentro de carpeta excluida -> no entra en Room, no ejecuta extracción pesada
+    @Test
+    fun testNewSongInExcludedFolderIsNotInsertedIntoRoom() = runTest(testDispatcher) {
+        val storage = InMemoryFolderExclusionStorage(setOf("Music/ExemptFolder"))
+        val policy = FolderExclusionPolicy(storage)
+
+        val newFilePath = "/storage/emulated/0/Music/ExemptFolder/brand_new_song.mp3"
+        val isExcluded = policy.isExcluded(newFilePath)
+        assertTrue("New song path must be detected as excluded by policy", isExcluded)
+
+        // Simulate scanner logic: when excluded, it is tracked in excludedIds and skipped from active processing
+        val allMediaStoreIds = mutableSetOf(901L)
+        val activeHeaders = mutableMapOf<Long, Pair<Long, Long>>() // id -> (dateMod, size)
+        val excludedIds = mutableSetOf<Long>()
+
+        if (policy.isExcluded(newFilePath)) {
+            excludedIds.add(901L)
+        } else {
+            activeHeaders[901L] = Pair(1000L, 5000L)
+        }
+
+        val existingHeaders = dao.getAllSongHeaders().associateBy { it.id }
+
+        // 1. Not in physicalDeletedIds
+        val physicalDeletedIds = existingHeaders.keys.filter { it !in allMediaStoreIds && it !in excludedIds }
+        assertTrue(physicalDeletedIds.isEmpty())
+
+        // 2. Not in toMarkExcluded (because it's not existing in Room)
+        val toMarkExcluded = existingHeaders.keys.filter { it in excludedIds }
+        assertTrue(toMarkExcluded.isEmpty())
+
+        // 3. Not in songsToProcess (because not in activeHeaders)
+        val songsToProcess = mutableListOf<Long>()
+        for ((id, _) in activeHeaders) {
+            if (!existingHeaders.containsKey(id)) {
+                songsToProcess.add(id)
+            }
+        }
+        assertTrue("New song in excluded folder must NOT enter songsToProcess", songsToProcess.isEmpty())
+
+        // Verify Room has no entity for 901L
+        assertNull("Excluded new song must NOT be inserted in Room", dao.getSongById(901L))
+    }
+
+    // Test 8: Migración 16->17 -> datos existentes sobreviven, columna y default correcto
+    @Test
+    fun testMigration16To17AddsIsExcludedColumnAndPreservesData() {
+        val context = RuntimeEnvironment.getApplication()
+        val dbFile = context.getDatabasePath("test_migration_16_17.db")
+        if (dbFile.exists()) dbFile.delete()
+
+        // Create raw SQLite DB at version 16 (matches version 16 schema without isExcludedFromLibrary)
+        val helperConfig = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name("test_migration_16_17.db")
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(16) {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `songs` (
+                            `id` INTEGER NOT NULL,
+                            `uri` TEXT NOT NULL,
+                            `title` TEXT NOT NULL,
+                            `artist` TEXT NOT NULL,
+                            `album` TEXT NOT NULL,
+                            `durationMs` INTEGER NOT NULL,
+                            `albumArtUri` TEXT,
+                            `bitDepth` INTEGER NOT NULL,
+                            `sampleRate` INTEGER NOT NULL,
+                            `mimeType` TEXT NOT NULL,
+                            `fileExtension` TEXT NOT NULL,
+                            `codec` TEXT NOT NULL,
+                            `bitrate` INTEGER NOT NULL,
+                            `channels` INTEGER NOT NULL,
+                            `fileSize` INTEGER NOT NULL,
+                            `dateModified` INTEGER NOT NULL,
+                            `dateAdded` INTEGER NOT NULL,
+                            `trackNumber` INTEGER NOT NULL,
+                            `discNumber` INTEGER NOT NULL,
+                            `year` INTEGER NOT NULL,
+                            `genre` TEXT NOT NULL,
+                            `composer` TEXT NOT NULL,
+                            `albumArtist` TEXT NOT NULL,
+                            `sortTitle` TEXT NOT NULL,
+                            `comment` TEXT NOT NULL,
+                            `replayGainTrack` REAL,
+                            `replayGainAlbum` REAL,
+                            `artworkWidth` INTEGER NOT NULL,
+                            `artworkHeight` INTEGER NOT NULL,
+                            `artworkMimeType` TEXT NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+
+                    db.execSQL("""
+                        INSERT INTO `songs` (
+                            `id`, `uri`, `title`, `artist`, `album`, `durationMs`,
+                            `bitDepth`, `sampleRate`, `mimeType`, `fileExtension`, `codec`,
+                            `bitrate`, `channels`, `fileSize`, `dateModified`, `dateAdded`,
+                            `trackNumber`, `discNumber`, `year`, `genre`, `composer`,
+                            `albumArtist`, `sortTitle`, `comment`, `artworkWidth`,
+                            `artworkHeight`, `artworkMimeType`
+                        ) VALUES (
+                            999, 'content://media/999', 'Pre Migration Song', 'Classic Artist', 'Classic Album', 240000,
+                            16, 44100, 'audio/flac', 'flac', 'flac',
+                            1000, 2, 20480000, 1600000000, 1600000000,
+                            1, 1, 1995, 'Rock', 'Rock Composer',
+                            'Classic Artist', 'Pre Migration Song', 'Classic Note', 500,
+                            500, 'image/jpeg'
+                        )
+                    """.trimIndent())
+                }
+
+                override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(helperConfig)
+        val writableDb = helper.writableDatabase
+
+        // Execute MIGRATION_16_17
+        MIGRATION_16_17.migrate(writableDb)
+
+        // Verify data survives migration
+        val cursor = writableDb.query("SELECT id, title, isExcludedFromLibrary FROM songs WHERE id = 999")
+        assertTrue(cursor.moveToFirst())
+        assertEquals(999L, cursor.getLong(0))
+        assertEquals("Pre Migration Song", cursor.getString(1))
+        // Verify default value is 0 (false)
+        assertEquals(0, cursor.getInt(2))
+        cursor.close()
+
+        // Verify index was created
+        val indexCursor = writableDb.query("PRAGMA index_list('songs')")
+        val indexNames = mutableListOf<String>()
+        while (indexCursor.moveToNext()) {
+            indexNames.add(indexCursor.getString(1))
+        }
+        indexCursor.close()
+        assertTrue("Index on isExcludedFromLibrary must exist", indexNames.contains("index_songs_isExcludedFromLibrary"))
+
+        writableDb.close()
+        dbFile.delete()
+    }
 }

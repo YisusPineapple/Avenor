@@ -75,14 +75,25 @@ class DatabaseRepository(val dao: MusicDao) {
         }
     }
 
-    suspend fun reconcileSongs(currentStorageSongs: List<Song>) {
+    suspend fun reconcileSongs(currentStorageSongs: List<Song>, excludedIds: Set<Long> = emptySet()) {
         val existingHeaders = dao.getAllSongHeaders().associateBy { it.id }
         val currentIds = currentStorageSongs.map { it.id }.toSet()
-        val toDeleteIds = existingHeaders.keys.filter { !currentIds.contains(it) }
+        val toDeleteIds = existingHeaders.values
+            .filter { !it.isExcludedFromLibrary && !currentIds.contains(it.id) && !excludedIds.contains(it.id) }
+            .map { it.id }
 
         if (toDeleteIds.isNotEmpty()) {
             toDeleteIds.chunked(500).forEach { batch ->
                 dao.deleteSongsByIds(batch)
+            }
+        }
+
+        if (excludedIds.isNotEmpty()) {
+            val toExclude = existingHeaders.values
+                .filter { excludedIds.contains(it.id) && !it.isExcludedFromLibrary }
+                .map { it.id }
+            if (toExclude.isNotEmpty()) {
+                dao.updateSongsExcludedStatus(toExclude, true)
             }
         }
 

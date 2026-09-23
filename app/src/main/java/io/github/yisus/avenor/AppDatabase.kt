@@ -28,7 +28,8 @@ import kotlinx.coroutines.flow.Flow
         Index("album"),
         Index("genre"),
         Index("dateAdded"),
-        Index(value = ["artist", "album"])
+        Index(value = ["artist", "album"]),
+        Index("isExcludedFromLibrary")
     ]
 )
 @Serializable
@@ -62,13 +63,15 @@ data class Song(
     val replayGainAlbum: Float? = null,
     val artworkWidth: Int = 0,
     val artworkHeight: Int = 0,
-    val artworkMimeType: String = ""
+    val artworkMimeType: String = "",
+    val isExcludedFromLibrary: Boolean = false
 )
 
 data class SongHeader(
     val id: Long,
     val dateModified: Long,
-    val fileSize: Long
+    val fileSize: Long,
+    val isExcludedFromLibrary: Boolean = false
 )
 
 data class PlaybackSongItem(
@@ -250,13 +253,17 @@ data class Favorite(
 
 @Serializable
 data class DatabaseExport(
-    val songs: List<Song>,
-    val playlists: List<Playlist>,
-    val history: List<ListeningHistory>,
-    val playlistSongs: List<PlaylistSongCrossRef>,
-    val eqPresets: List<EqPreset>,
-    val settings: AppSetting?,
-    val lyricOffsets: List<LyricOffset>,
+    val backupFormatVersion: Int = BackupManager.CURRENT_BACKUP_FORMAT_VERSION,
+    val roomSchemaVersion: Int = DATABASE_VERSION,
+    val checksumAlgorithm: String? = null,
+    val checksumSha256: String? = null,
+    val songs: List<Song> = emptyList(),
+    val playlists: List<Playlist> = emptyList(),
+    val history: List<ListeningHistory> = emptyList(),
+    val playlistSongs: List<PlaylistSongCrossRef> = emptyList(),
+    val eqPresets: List<EqPreset> = emptyList(),
+    val settings: AppSetting? = null,
+    val lyricOffsets: List<LyricOffset> = emptyList(),
     val playbackQueues: List<PlaybackQueue> = emptyList(),
     val queueSongs: List<QueueSong> = emptyList(),
     val trashItems: List<TrashItem> = emptyList(),
@@ -271,64 +278,72 @@ interface MusicDao {
     @Query("SELECT * FROM songs WHERE id IN (:ids)")
     suspend fun getSongsByIds(ids: List<Long>): List<Song>
 
-    @Query("SELECT id, dateModified, fileSize FROM songs")
+    @Query("SELECT id, dateModified, fileSize, isExcludedFromLibrary FROM songs")
     suspend fun getAllSongHeaders(): List<SongHeader>
 
     @Query("DELETE FROM songs WHERE id IN (:ids)")
     suspend fun deleteSongsByIds(ids: List<Long>)
 
-    @Query("SELECT COUNT(*) FROM songs")
+    @Query("UPDATE songs SET isExcludedFromLibrary = :isExcluded WHERE id IN (:ids)")
+    suspend fun updateSongsExcludedStatus(ids: List<Long>, isExcluded: Boolean)
+
+    @Query("UPDATE songs SET isExcludedFromLibrary = :isExcluded WHERE id = :id")
+    suspend fun updateSongExcludedStatus(id: Long, isExcluded: Boolean)
+
+    @Query("SELECT COUNT(*) FROM songs WHERE isExcludedFromLibrary = 0")
     fun getSongsCount(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM songs")
+    @Query("SELECT COUNT(*) FROM songs WHERE isExcludedFromLibrary = 0")
     suspend fun getSongsCountSync(): Int
 
-    @Query("SELECT * FROM songs ORDER BY title COLLATE NOCASE ASC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY title COLLATE NOCASE ASC")
     fun getPagedSongs(): PagingSource<Int, Song>
 
-    @Query("SELECT * FROM songs ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
     fun getPagedSongsByArtist(): PagingSource<Int, Song>
 
-    @Query("SELECT * FROM songs ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
     fun getPagedSongsByAlbum(): PagingSource<Int, Song>
 
-    @Query("SELECT * FROM songs ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY dateAdded DESC")
     fun getPagedSongsByDateAdded(): PagingSource<Int, Song>
 
-    @Query("SELECT * FROM songs ORDER BY durationMs DESC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY durationMs DESC")
     fun getPagedSongsByDuration(): PagingSource<Int, Song>
 
     @Query("""
         SELECT * FROM songs 
-        WHERE title LIKE '%' || :query || '%' 
+        WHERE isExcludedFromLibrary = 0
+          AND (title LIKE '%' || :query || '%' 
            OR artist LIKE '%' || :query || '%' 
            OR album LIKE '%' || :query || '%' 
-           OR genre LIKE '%' || :query || '%'
+           OR genre LIKE '%' || :query || '%')
         ORDER BY title COLLATE NOCASE ASC
     """)
     fun searchPagedSongs(query: String): PagingSource<Int, Song>
 
-    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY title COLLATE NOCASE ASC")
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY title COLLATE NOCASE ASC")
     suspend fun getPlaybackSongsByTitle(): List<PlaybackSongItem>
 
-    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, trackNumber ASC, title COLLATE NOCASE ASC")
     suspend fun getPlaybackSongsByArtist(): List<PlaybackSongItem>
 
-    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY album COLLATE NOCASE ASC, discNumber ASC, trackNumber ASC, title COLLATE NOCASE ASC")
     suspend fun getPlaybackSongsByAlbum(): List<PlaybackSongItem>
 
-    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY dateAdded DESC")
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY dateAdded DESC")
     suspend fun getPlaybackSongsByDateAdded(): List<PlaybackSongItem>
 
-    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs ORDER BY durationMs DESC")
+    @Query("SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY durationMs DESC")
     suspend fun getPlaybackSongsByDuration(): List<PlaybackSongItem>
 
     @Query("""
         SELECT id, uri, title, artist, album, durationMs, albumArtUri, codec, sampleRate, bitDepth FROM songs 
-        WHERE title LIKE '%' || :query || '%' 
+        WHERE isExcludedFromLibrary = 0
+          AND (title LIKE '%' || :query || '%' 
            OR artist LIKE '%' || :query || '%' 
            OR album LIKE '%' || :query || '%' 
-           OR genre LIKE '%' || :query || '%'
+           OR genre LIKE '%' || :query || '%')
         ORDER BY title COLLATE NOCASE ASC
     """)
     suspend fun searchPlaybackSongs(query: String): List<PlaybackSongItem>
@@ -336,6 +351,7 @@ interface MusicDao {
     @Query("""
         SELECT songs.* FROM songs 
         INNER JOIN favorites ON songs.id = favorites.songId 
+        WHERE songs.isExcludedFromLibrary = 0
         ORDER BY favorites.addedAt DESC
     """)
     fun getPagedFavorites(): PagingSource<Int, Song>
@@ -343,7 +359,7 @@ interface MusicDao {
     @Query("""
         SELECT songs.* FROM songs 
         INNER JOIN playlist_songs ON songs.id = playlist_songs.songId 
-        WHERE playlist_songs.playlistId = :playlistId 
+        WHERE playlist_songs.playlistId = :playlistId AND songs.isExcludedFromLibrary = 0
         ORDER BY playlist_songs.addedAt ASC
     """)
     fun getPagedSongsForPlaylist(playlistId: Int): PagingSource<Int, Song>
@@ -477,7 +493,7 @@ suspend fun updateSong(song: Song)
     @Delete
     suspend fun deleteSong(song: Song)
 
-    @Query("SELECT * FROM songs ORDER BY title ASC")
+    @Query("SELECT * FROM songs WHERE isExcludedFromLibrary = 0 ORDER BY title ASC")
 fun getAllSongs(): Flow<List<Song>>
 
 @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -492,19 +508,22 @@ suspend fun insertSongToPlaylist(crossRef: PlaylistSongCrossRef)
 @Query("DELETE FROM playlist_songs WHERE playlistId = :playlistId AND songId = :songId")
 suspend fun removeSongFromPlaylist(playlistId: Int, songId: Long)
 
-@Query("SELECT songs.* FROM songs INNER JOIN playlist_songs ON songs.id = playlist_songs.songId WHERE playlist_songs.playlistId = :playlistId ORDER BY playlist_songs.addedAt ASC")
+@Query("SELECT songs.* FROM songs INNER JOIN playlist_songs ON songs.id = playlist_songs.songId WHERE playlist_songs.playlistId = :playlistId AND songs.isExcludedFromLibrary = 0 ORDER BY playlist_songs.addedAt ASC")
 fun getSongsForPlaylist(playlistId: Int): Flow<List<Song>>
 
 @Insert
 suspend fun insertHistory(history: ListeningHistory): Long
 
+@Insert(onConflict = OnConflictStrategy.REPLACE)
+suspend fun insertHistoryList(history: List<ListeningHistory>)
+
 @Query("UPDATE listening_history SET skipped = :skipped WHERE id = :historyId")
 suspend fun updateHistorySkipped(historyId: Long, skipped: Boolean)
 
-@Query("SELECT songs.* FROM songs INNER JOIN listening_history ON songs.id = listening_history.songId ORDER BY listening_history.playedAt DESC LIMIT :limit")
+@Query("SELECT songs.* FROM songs INNER JOIN listening_history ON songs.id = listening_history.songId WHERE songs.isExcludedFromLibrary = 0 ORDER BY listening_history.playedAt DESC LIMIT :limit")
 fun getRecentHistory(limit: Int = 20): Flow<List<Song>>
 
-@Query("SELECT * FROM (SELECT songs.*, 1 as priority FROM songs WHERE artist IN (SELECT s.artist FROM songs s JOIN listening_history h ON s.id = h.songId GROUP BY s.artist ORDER BY COUNT(h.id) DESC LIMIT 5) UNION SELECT songs.*, 2 as priority FROM songs) GROUP BY id ORDER BY priority ASC, RANDOM() LIMIT 15")
+@Query("SELECT * FROM (SELECT songs.*, 1 as priority FROM songs WHERE artist IN (SELECT s.artist FROM songs s JOIN listening_history h ON s.id = h.songId GROUP BY s.artist ORDER BY COUNT(h.id) DESC LIMIT 5) UNION SELECT songs.*, 2 as priority FROM songs) WHERE isExcludedFromLibrary = 0 GROUP BY id ORDER BY priority ASC, RANDOM() LIMIT 15")
 fun getDailyMix(): Flow<List<Song>>
 
 @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -547,7 +566,7 @@ suspend fun saveSettings(setting: AppSetting)
     @Query("DELETE FROM favorites WHERE songId = :songId")
     suspend fun removeFavorite(songId: Long)
 
-    @Query("SELECT songs.* FROM songs INNER JOIN favorites ON songs.id = favorites.songId ORDER BY favorites.addedAt DESC")
+    @Query("SELECT songs.* FROM songs INNER JOIN favorites ON songs.id = favorites.songId WHERE songs.isExcludedFromLibrary = 0 ORDER BY favorites.addedAt DESC")
     fun getFavoriteSongs(): Flow<List<Song>>
 
     @Query("SELECT songId FROM favorites")
@@ -562,26 +581,31 @@ suspend fun saveSettings(setting: AppSetting)
     @Transaction
     suspend fun restoreDatabase(export: DatabaseExport) {
         clearPlaylistSongs()
+        clearFavorites()
+        clearQueueSongs()
         clearHistory()
         clearPlaylists()
+        clearPlaybackQueues()
         clearSongs()
         clearEqPresets()
         clearLyricOffsets()
-        clearPlaybackQueues()
-        clearQueueSongs()
         clearTrashItems()
-        clearFavorites()
 
         insertSongs(export.songs)
         export.playlists.forEach { insertPlaylist(it) }
         export.playlistSongs.forEach { insertSongToPlaylist(it) }
+        if (export.history.isNotEmpty()) {
+            insertHistoryList(export.history)
+        }
+        export.favorites.forEach { addFavorite(it) }
         export.eqPresets.forEach { insertEqPreset(it) }
         export.lyricOffsets.forEach { saveLyricOffset(it) }
         export.settings?.let { saveSettings(it) }
         export.playbackQueues.forEach { insertPlaybackQueue(it) }
-        insertQueueSongs(export.queueSongs)
+        if (export.queueSongs.isNotEmpty()) {
+            insertQueueSongs(export.queueSongs)
+        }
         export.trashItems.forEach { insertTrashItem(it) }
-        export.favorites.forEach { addFavorite(it) }
     }
 }
 
@@ -681,6 +705,15 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `isExcludedFromLibrary` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_isExcludedFromLibrary` ON `songs` (`isExcludedFromLibrary`)")
+    }
+}
+
+const val DATABASE_VERSION = 17
+
 @Database(
     entities = [
         Song::class,
@@ -695,7 +728,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         TrashItem::class,
         Favorite::class
     ],
-    version = 16,
+    version = DATABASE_VERSION,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -708,7 +741,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
