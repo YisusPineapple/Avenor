@@ -9,6 +9,7 @@ import io.github.yisus.avenor.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -244,6 +245,16 @@ class PlaybackCoordinator(
             } catch (e: Exception) {
                 android.util.Log.e("PlaybackCoordinator", "Error updating position in database", e)
             }
+        }
+    }
+
+    /**
+     * Non-blocking asynchronous position persistence designed for safe lifecycle boundaries (e.g. Service onDestroy).
+     * Dispatches on the coordinator's application-scoped SupervisorJob without blocking the calling thread.
+     */
+    fun persistPositionAsync(positionMs: Long): kotlinx.coroutines.Job {
+        return scope.launch {
+            updatePosition(positionMs, force = true)
         }
     }
 

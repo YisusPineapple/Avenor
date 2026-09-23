@@ -547,8 +547,8 @@ class LibraryScanner(
             albumArtist = record.albumArtist,
             sortTitle = sortTitle,
             comment = "",
-            replayGainTrack = null,
-            replayGainAlbum = null,
+            replayGainTrack = specs.replayGainTrack,
+            replayGainAlbum = specs.replayGainAlbum,
             artworkWidth = 0,
             artworkHeight = 0,
             artworkMimeType = ""

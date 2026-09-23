@@ -5,6 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import android.util.Log
+import io.github.yisus.avenor.replaygain.ReplayGainParser
 import java.io.File
 
 interface MetadataExtractor {
@@ -21,7 +22,9 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         val fileExtension: String = "mp3",
         val codec: String = "MP3",
         val bitrate: Long = 0L,
-        val channels: Int = 2
+        val channels: Int = 2,
+        val replayGainTrack: Float? = null,
+        val replayGainAlbum: Float? = null
     )
 
     override fun extract(context: Context, uri: Uri, filePath: String?): AudioSpecs {
@@ -87,7 +90,24 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         }
 
         val codec = resolveCodec(mimeType, ext)
-        return AudioSpecs(bitDepth, sampleRate, mimeType, ext, codec, bitrate, channels)
+        val replayGainData = try {
+            ReplayGainParser.extractFromUri(context, uri, filePath)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing ReplayGain for $uri: ${e.message}")
+            io.github.yisus.avenor.replaygain.ReplayGainData()
+        }
+
+        return AudioSpecs(
+            bitDepth = bitDepth,
+            sampleRate = sampleRate,
+            mimeType = mimeType,
+            fileExtension = ext,
+            codec = codec,
+            bitrate = bitrate,
+            channels = channels,
+            replayGainTrack = replayGainData.trackGain,
+            replayGainAlbum = replayGainData.albumGain
+        )
     }
 
     fun resolveCodec(mimeType: String, ext: String): String {

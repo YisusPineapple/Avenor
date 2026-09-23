@@ -50,15 +50,12 @@ class PlaybackService : MediaSessionService() {
         val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
             .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             
-        val appSettings = kotlinx.coroutines.runBlocking {
-            AppDatabase.getDatabase(this@PlaybackService).musicDao().getSettings().firstOrNull()
-        }
-        val bufferMs = DeviceProfileManager.getOptimalBufferMs(appSettings?.performanceMode ?: "VIVID")
-        
+        // Use safe default buffer duration for fast, non-blocking player startup
+        val defaultBufferMs = DeviceProfileManager.getOptimalBufferMs("VIVID")
         val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                bufferMs,
-                bufferMs,
+                defaultBufferMs,
+                defaultBufferMs,
                 androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                 androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
             )
@@ -125,6 +122,23 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         })
+
+        // Asynchronously load settings to configure notification actions and layout without blocking Main
+        serviceScope.launch {
+            try {
+                val appSettings = AppDatabase.getDatabase(this@PlaybackService).musicDao().getSettings().firstOrNull()
+                if (appSettings != null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        showLikeButton = appSettings.showLike
+                        showShuffleButton = appSettings.showShuffle
+                        showRepeatButton = appSettings.showRepeat
+                        mediaSession?.setCustomLayout(buildCustomLayout())
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PlaybackService", "Error loading settings asynchronously in onCreate", e)
+            }
+        }
 
         // Restore persisted queue and playback state from Room
         serviceScope.launch {
@@ -323,22 +337,33 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         try {
-            mediaSession?.player?.let { p ->
-                kotlinx.coroutines.runBlocking {
-                    playbackCoordinator.updatePosition(p.currentPosition, force = true)
-                }
-            }
+            val player = mediaSession?.player
+            val currentPos = player?.currentPosition ?: 0L
+            // 1. Capture state and request structured persistence on coordinator without blocking Main
+            playbackCoordinator.persistPositionAsync(currentPos)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("PlaybackService", "Error persisting position on destroy", e)
         }
-        serviceScope.cancel()
+
+        // 2. Release transition engine & audio effects
+        try {
+            crossfadeManager.release()
+            equalizer?.release()
+            equalizer = null
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackService", "Error releasing audio effects on destroy", e)
+        }
+
+        // 3. Release player and media session
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
-        equalizer?.release()
-        crossfadeManager.release()
+
+        // 4. Cancel service-bound scope
+        serviceScope.cancel()
+
         super.onDestroy()
     }
 }
