@@ -105,7 +105,7 @@ class LibraryScannerP13CTest {
         private val onExtractCallback: ((Long) -> Unit)? = null
     ) : MetadataExtractor {
         val callCount = AtomicInteger(0)
-        val extractedUris = mutableListOf<Uri>()
+        val extractedUris = java.util.concurrent.CopyOnWriteArrayList<Uri>()
 
         override fun extract(context: Context, uri: Uri, filePath: String?): ExtendedMetadataExtractor.AudioSpecs {
             val id = ContentUris.parseId(uri)

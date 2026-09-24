@@ -219,5 +219,6 @@ class FolderExclusionTest {
         assertEquals(setOf("/storage/emulated/0/Podcasts"), policy.getExcludedFolders())
         policy.addExcludedFolder("NewFolder/Audio")
         assertEquals(setOf("/storage/emulated/0/Podcasts", "newfolder/audio"), policy.getExcludedFolders())
+        storage1.setExcludedFolders(emptySet())
     }
 }

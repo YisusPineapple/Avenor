@@ -45,4 +45,12 @@ class ErrorRecoveryManager(private val player: ExoPlayer) : Player.Listener {
             consecutiveErrors = 0
         }
     }
+
+    fun release() {
+        try {
+            player.removeListener(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing player listener: ${e.message}")
+        }
+    }
 }
