@@ -5,7 +5,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 
-import android.media.audiofx.Equalizer
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -20,18 +19,22 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import io.github.yisus.avenor.dsp.EqBandSettings
+import io.github.yisus.avenor.dsp.EqPreferences
+import io.github.yisus.avenor.dsp.EqualizerAudioProcessor
 import io.github.yisus.avenor.playback.PlaybackCoordinator
 
 class PlaybackService : MediaSessionService() {
     internal var mediaSession: MediaSession? = null
-    private var equalizer: Equalizer? = null
     internal lateinit var errorRecoveryManager: ErrorRecoveryManager
     internal lateinit var crossfadeManager: CrossfadeManager
     internal lateinit var playbackCoordinator: PlaybackCoordinator
+    internal lateinit var eqPreferences: EqPreferences
     private var audioDeviceCallback: android.media.AudioDeviceCallback? = null
     private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     
     val replayGainAudioProcessor = io.github.yisus.avenor.replaygain.ReplayGainAudioProcessor()
+    val equalizerAudioProcessor = EqualizerAudioProcessor()
     val safeLimiterAudioProcessor = io.github.yisus.avenor.replaygain.SafeLimiterAudioProcessor()
     var replayGainMode: io.github.yisus.avenor.replaygain.ReplayGainMode = io.github.yisus.avenor.replaygain.ReplayGainMode.TRACK
     var replayGainPreampDb: Float = 0.0f
@@ -43,6 +46,12 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         playbackCoordinator = PlaybackCoordinator.getInstance(this)
+        eqPreferences = EqPreferences(this)
+
+        // Restore persisted EQ configuration outside hot path
+        val persistedEnabled = eqPreferences.isEnabled()
+        val persistedBands = eqPreferences.getBands()
+        equalizerAudioProcessor.setSettings(EqBandSettings.of(persistedEnabled, persistedBands))
         
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -56,10 +65,16 @@ class PlaybackService : MediaSessionService() {
         val renderersFactory = io.github.yisus.avenor.audio.AvenorRenderersFactory(
             context = this,
             replayGainAudioProcessor = replayGainAudioProcessor,
+            equalizerAudioProcessor = equalizerAudioProcessor,
             safeLimiterAudioProcessor = safeLimiterAudioProcessor
         ).setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             
-        // Use safe default buffer duration for fast, non-blocking player startup
+        // Configure LoadControl:
+        // - Buffer durations define the forward buffering policy for the active MediaItem.
+        // - Sequential preparation of consecutive tracks depends on ExoPlayer's internal MediaPeriodQueue
+        //   processing the loaded playlist (setMediaItems). Avenor does NOT implement a custom PreloadManager.
+        // - setBackBuffer(30000, true) retains up to 30s of ALREADY PLAYED audio (past/historical buffer)
+        //   to enable fast backward seeking without re-requesting disk I/O. It is NOT forward preloading of Track B.
         val defaultBufferMs = DeviceProfileManager.getOptimalBufferMs("VIVID")
         val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -83,13 +98,7 @@ class PlaybackService : MediaSessionService() {
             
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
-                    try {
-                        equalizer?.release()
-                        equalizer = Equalizer(0, audioSessionId)
-                        equalizer?.enabled = true
-                    } catch (e: Exception) { e.printStackTrace() }
-                }
+                // Platform Equalizer removed in favor of software EqualizerAudioProcessor in DefaultAudioSink
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -406,8 +415,7 @@ class PlaybackService : MediaSessionService() {
             }
             errorRecoveryManager.release()
             crossfadeManager.release()
-            equalizer?.release()
-            equalizer = null
+            equalizerAudioProcessor.reset()
             replayGainAudioProcessor.reset()
             safeLimiterAudioProcessor.reset()
         } catch (e: Exception) {
@@ -495,10 +503,47 @@ class PlaybackService : MediaSessionService() {
             }
             "SET_EQ_BAND" -> {
                 try {
-                    val band = args.getShort("band")
-                    val level = args.getShort("level")
-                    equalizer?.setBandLevel(band, level)
-                } catch (e: Exception) { e.printStackTrace() }
+                    val band = if (args.containsKey("band")) args.getShort("band").toInt() else -1
+                    val levelDb: Float = when {
+                        args.containsKey("levelDb") -> args.getFloat("levelDb")
+                        args.containsKey("level") -> args.getShort("level").toFloat() / 100.0f
+                        else -> 0.0f
+                    }
+                    if (band in 0 until EqBandSettings.BAND_COUNT && !levelDb.isNaN() && !levelDb.isInfinite()) {
+                        val currentGains = equalizerAudioProcessor.getSettings().copyGains()
+                        currentGains[band] = levelDb.coerceIn(-12.0f, 12.0f)
+                        val newSettings = EqBandSettings.of(equalizerAudioProcessor.getSettings().isEnabled, currentGains)
+                        equalizerAudioProcessor.setSettings(newSettings)
+                        eqPreferences.setBands(currentGains)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaybackService", "Error setting EQ band", e)
+                }
+            }
+            "SET_EQ_CONFIG" -> {
+                try {
+                    val currentSettings = equalizerAudioProcessor.getSettings()
+                    val newEnabled = if (args.containsKey("enabled")) args.getBoolean("enabled") else currentSettings.isEnabled
+                    val newGains = if (args.containsKey("bands")) {
+                        args.getFloatArray("bands") ?: currentSettings.copyGains()
+                    } else {
+                        currentSettings.copyGains()
+                    }
+                    if (newGains.size == EqBandSettings.BAND_COUNT) {
+                        val newSettings = EqBandSettings.of(newEnabled, newGains)
+                        equalizerAudioProcessor.setSettings(newSettings)
+                        eqPreferences.setEnabled(newEnabled)
+                        eqPreferences.setBands(newGains)
+                    }
+                    if (args.containsKey("presetName")) {
+                        val pName = args.getString("presetName")
+                        if (!pName.isNullOrBlank()) {
+                            eqPreferences.setCurrentPresetName(pName)
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaybackService", "Error setting EQ config", e)
+                }
             }
             "SET_NOTIFICATION_PREFS" -> {
                 try {

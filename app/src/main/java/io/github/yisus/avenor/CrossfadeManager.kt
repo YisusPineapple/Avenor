@@ -28,18 +28,23 @@ enum class TransitionState {
 }
 
 /**
- * Handles crossfade and volume transitions between playback tracks.
+ * Single-player Volume Envelope / Transition Engine.
  *
- * Volume Architecture & Semantics:
- * - [player.volume] represents the software output gain of the ExoPlayer audio sink [0.0f .. 1.0f].
- * - During active transitions, [CrossfadeManager] temporarily modulates [player.volume].
+ * Architecture & Operational Semantics:
+ * - Operates on a single [ExoPlayer] instance by modulating [player.volume] (software output gain [0.0f .. 1.0f]).
+ * - This component is NOT a dual-player mixer and does NOT perform concurrent overlapping playback
+ *   of two audio streams (no true two-track crossfade).
+ * - Crossfade OFF: During automatic track transitions ([Player.DISCONTINUITY_REASON_AUTO_TRANSITION]),
+ *   [player.volume] is NOT modified in any way (stays at 1.0f). The transition proceeds with the natural
+ *   continuity provided by Media3's internal playlist pipeline, without artificial volume dips or silence.
+ * - Crossfade ON (AUTO_TRANSITION): Because only one player exists, Track A finishes before Track B starts;
+ *   this engine applies a smooth fade-in curve to Track B's volume. Track A and Track B are not mixed simultaneously.
+ * - Manual Skip: When enabled or forced, performs a volume envelope dip (fade-out of current track -> seek
+ *   to target track -> fade-in of target track, i.e., a dip-to-silence transition).
  * - Invariant: [player.volume] MUST be cleanly restored to 1.0f whenever a transition finishes,
  *   is cancelled, or when playback pauses, stops, encounters an error, or the service is destroyed.
- * - Gapless playback: When [isCrossfadeEnabled] is false, automatic track transitions
- *   (DISCONTINUITY_REASON_AUTO_TRANSITION) bypass volume manipulation entirely, preserving
- *   bit-exact gapless transitions.
- * - Future phases (P2-2/P2-3 DSP) will introduce ReplayGain and limiter stages in dedicated
- *   AudioProcessors rather than manipulating [player.volume].
+ * - ReplayGain and limiting are handled downstream in dedicated AudioProcessors, completely isolated
+ *   from this volume envelope engine.
  */
 class CrossfadeManager(
     private val player: ExoPlayer,
@@ -134,7 +139,8 @@ class CrossfadeManager(
 
     /**
      * Initiates a manual skip transition.
-     * When [force] or [isCrossfadeEnabled] is true, smoothly fades out, seeks track, and fades in.
+     * When [force] or [isCrossfadeEnabled] is true, applies a dip-to-silence transition
+     * (smoothly fades out current track, seeks to target track, and fades in new track).
      * When neither is true, performs immediate seek without altering volume.
      */
     fun manualSkip(forward: Boolean, force: Boolean = true) {

@@ -371,42 +371,35 @@ private var currentPlayingList: List<Song> = emptyList()
 private val _eqBands = MutableStateFlow(listOf(0f, 0f, 0f, 0f, 0f))
 val eqBands: StateFlow<List<Float>> = _eqBands.asStateFlow()
 
-val defaultEqPresets = listOf(
-EqPreset(-1, "Flat", "0,0,0,0,0"),
-EqPreset(-2, "Rock", "4,2,-2,3,5"),
-EqPreset(-3, "Lo-Fi", "5,4,-1,-3,-5"),
-EqPreset(-4, "Reggae", "5,3,0,2,1"),
-EqPreset(-5, "Rap", "6,2,-1,2,4"),
-EqPreset(-6, "Classical", "5,3,-2,4,4"),
-EqPreset(-7, "Dance", "6,0,2,4,1"),
-EqPreset(-8, "Electronic", "4,3,-1,2,5"),
-EqPreset(-9, "Jazz", "4,2,-2,2,3"),
-EqPreset(-10, "Pop", "-1,2,5,1,-2"),
-EqPreset(-11, "R&B", "3,1,0,3,3"),
-EqPreset(-12, "Acoustic", "4,1,2,3,3"),
-EqPreset(-13, "Bass Boost", "8,5,0,0,0"),
-EqPreset(-14, "Treble Boost", "0,0,0,5,8"),
-EqPreset(-15, "Latin", "5,2,-1,3,4"),
-EqPreset(-16, "Vocal Booster", "-2,-1,5,3,-1")
-)
+val defaultEqPresets: List<EqPreset>
+    get() = io.github.yisus.avenor.dsp.EqPresetDefinitions.DEFAULT_PRESETS
 
 fun updateEqBand(index: Int, level: Float) {
-val newBands = _eqBands.value.toMutableList()
-newBands[index] = level
-_eqBands.value = newBands
+    val clampedLevel = level.coerceIn(-12.0f, 12.0f)
+    val newBands = _eqBands.value.toMutableList()
+    if (index in 0 until newBands.size) {
+        newBands[index] = clampedLevel
+        _eqBands.value = newBands
 
-val args = Bundle().apply {
-putShort("band", index.toShort())
-putShort("level", (level * 100).toInt().toShort())
-}
-controller?.sendCustomCommand(SessionCommand("SET_EQ_BAND", Bundle.EMPTY), args)
+        val args = Bundle().apply {
+            putShort("band", index.toShort())
+            putShort("level", (clampedLevel * 100).toInt().toShort())
+            putFloat("levelDb", clampedLevel)
+        }
+        controller?.sendCustomCommand(SessionCommand("SET_EQ_BAND", Bundle.EMPTY), args)
+    }
 }
 
 fun saveEqPreset(name: String) = viewModelScope.launch { dbRepo.saveEqPreset(name, _eqBands.value) }
 
 fun applyEqPreset(preset: EqPreset) {
-val presetBands = preset.bands.split(",").map { it.toFloatOrNull() ?: 0f }
-presetBands.forEachIndexed { index, level -> updateEqBand(index, level) }
+    val presetBands = io.github.yisus.avenor.dsp.EqPresetDefinitions.parseBands(preset.bands)
+    presetBands.forEachIndexed { index, level -> updateEqBand(index, level) }
+    val args = Bundle().apply {
+        putString("presetName", preset.name)
+        putFloatArray("bands", presetBands)
+    }
+    controller?.sendCustomCommand(SessionCommand("SET_EQ_CONFIG", Bundle.EMPTY), args)
 }
 
 // Auto-EQ now checks MediaMetadata Genre from ID3 tags extracted natively by ExoPlayer!
@@ -463,7 +456,10 @@ if (songFromQueue != null) {
 override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { _isShuffleEnabled.value = shuffleModeEnabled }
 override fun onRepeatModeChanged(repeatMode: Int) { _repeatMode.value = repeatMode }
 })
-// Apply Initial Flat EQ state to service
+// Apply Persisted EQ state to service
+val eqPrefs = io.github.yisus.avenor.dsp.EqPreferences(context)
+val initialBands = eqPrefs.getBands()
+_eqBands.value = initialBands.toList()
 _eqBands.value.forEachIndexed { index, level -> updateEqBand(index, level) }
 
 // Sync Notification Prefs
