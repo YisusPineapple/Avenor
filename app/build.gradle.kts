@@ -48,6 +48,7 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation("com.google.dagger:hilt-android:2.51.1")
     ksp("com.google.dagger:hilt-android-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
@@ -76,6 +77,7 @@ dependencies {
     
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     
     // Serialization & WorkManager
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
