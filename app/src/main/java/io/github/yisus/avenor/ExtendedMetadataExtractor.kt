@@ -5,15 +5,27 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import android.util.Log
+import io.github.yisus.avenor.metadata.AudioCodecType
+import io.github.yisus.avenor.metadata.AudioContainerType
+import io.github.yisus.avenor.metadata.DefaultMetadataExtractorResolver
+import io.github.yisus.avenor.metadata.MetadataExtractorResolver
+import io.github.yisus.avenor.metadata.RawMetadataPackage
+import io.github.yisus.avenor.metadata.SeekableFileSource
 import io.github.yisus.avenor.replaygain.ReplayGainParser
 import java.io.File
 
+/**
+ * Productive high-level metadata extraction contract used by [LibraryScanner].
+ *
+ * Bridges Android [Context]/[Uri] resources with [SeekableFileSource] and [MetadataExtractorResolver].
+ */
 interface MetadataExtractor {
     fun extract(context: Context, uri: Uri, filePath: String? = null): ExtendedMetadataExtractor.AudioSpecs
 }
 
 object ExtendedMetadataExtractor : MetadataExtractor {
     private const val TAG = "ExtendedMetadataExtractor"
+    var resolver: MetadataExtractorResolver = DefaultMetadataExtractorResolver
 
     data class AudioSpecs(
         val bitDepth: Int = 16,
@@ -27,6 +39,18 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         val replayGainAlbum: Float? = null
     )
 
+    /**
+     * Extracts a low-level [RawMetadataPackage] directly from a [SeekableFileSource]
+     * using the configured [MetadataExtractorResolver].
+     */
+    fun extractFromSource(
+        source: SeekableFileSource,
+        containerHint: AudioContainerType = AudioContainerType.UNKNOWN
+    ): RawMetadataPackage {
+        val containerExtractor = resolver.resolve(source, containerHint)
+        return containerExtractor.extract(source)
+    }
+
     override fun extract(context: Context, uri: Uri, filePath: String?): AudioSpecs {
         var bitDepth = 16
         var sampleRate = 44100
@@ -37,21 +61,44 @@ object ExtendedMetadataExtractor : MetadataExtractor {
 
         if (filePath != null) {
             val file = File(filePath)
-            if (file.exists()) {
+            if (file.extension.isNotBlank()) {
                 ext = file.extension.lowercase()
             }
         }
 
+        // 1. Sniff & extract binary header package via SeekableFileSource when accessible
+        var binaryPkg: RawMetadataPackage? = null
+        var sniffedContainer: AudioContainerType = AudioContainerType.fromExtension(ext)
+        try {
+            SeekableFileSource.fromContextUri(context, uri, filePath)?.use { source ->
+                sniffedContainer = AudioContainerType.sniffFromSource(source, sniffedContainer)
+                if (sniffedContainer != AudioContainerType.UNKNOWN && ext == "mp3" && sniffedContainer.standardExtension != "raw") {
+                    ext = sniffedContainer.standardExtension
+                }
+                binaryPkg = extractFromSource(source, sniffedContainer)
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "SeekableFileSource binary header pass skipped for $uri: ${e.message}")
+        }
+
+        if (binaryPkg != null) {
+            if (binaryPkg!!.sampleRate > 0) sampleRate = binaryPkg!!.sampleRate
+            if (binaryPkg!!.channelCount > 0) channels = binaryPkg!!.channelCount
+            if (binaryPkg!!.bitDepth > 0) bitDepth = binaryPkg!!.bitDepth
+            if (binaryPkg!!.bitrate > 0L) bitrate = binaryPkg!!.bitrate
+        }
+
+        // 2. Platform MediaExtractor pass for container/track format verification
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
             if (extractor.trackCount > 0) {
                 val format = extractor.getTrackFormat(0)
-                
+
                 if (format.containsKey(MediaFormat.KEY_MIME)) {
                     mimeType = format.getString(MediaFormat.KEY_MIME) ?: mimeType
                 }
-                
+
                 if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
                     sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 }
@@ -63,7 +110,7 @@ object ExtendedMetadataExtractor : MetadataExtractor {
                 if (format.containsKey(MediaFormat.KEY_BIT_RATE)) {
                     bitrate = format.getInteger(MediaFormat.KEY_BIT_RATE).toLong()
                 }
-                
+
                 // Bit Depth inference
                 if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
                     val pcm = format.getInteger(MediaFormat.KEY_PCM_ENCODING)
@@ -73,10 +120,12 @@ object ExtendedMetadataExtractor : MetadataExtractor {
                         android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED,
                         android.media.AudioFormat.ENCODING_PCM_32BIT,
                         android.media.AudioFormat.ENCODING_PCM_FLOAT -> 24
-                        else -> 16
+                        else -> bitDepth
                     }
-                } else if (mimeType.contains("flac") || mimeType.contains("alac") || mimeType.contains("opus") || mimeType.contains("ac4") || mimeType.contains("eac3")) {
-                    bitDepth = 24
+                } else if (binaryPkg == null || binaryPkg!!.bitDepth <= 0) {
+                    if (mimeType.contains("flac") || mimeType.contains("alac") || mimeType.contains("opus") || mimeType.contains("ac4") || mimeType.contains("eac3")) {
+                        bitDepth = 24
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -84,7 +133,7 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         } finally {
             try {
                 extractor.release()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // ignore
             }
         }
@@ -110,19 +159,13 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         )
     }
 
+    /**
+     * Resolves the canonical user-facing codec label by delegating to [AudioCodecType]
+     * and [AudioContainerType].
+     */
     fun resolveCodec(mimeType: String, ext: String): String {
-        val lowerMime = mimeType.lowercase()
-        val lowerExt = ext.lowercase()
-        return when {
-            lowerMime.contains("flac") || lowerExt == "flac" -> "FLAC"
-            lowerMime.contains("alac") || lowerExt == "alac" -> "ALAC"
-            lowerMime.contains("opus") || lowerExt == "opus" -> "OPUS"
-            lowerMime.contains("vorbis") || lowerExt == "ogg" -> "OGG"
-            lowerMime.contains("mp4a") || lowerMime.contains("aac") || lowerExt in listOf("m4a", "aac", "mp4") -> "AAC"
-            lowerMime.contains("mpeg") || lowerMime.contains("mp3") || lowerExt == "mp3" -> "MP3"
-            lowerMime.contains("wav") || lowerExt == "wav" -> "WAV"
-            lowerMime.contains("eac3") || lowerMime.contains("ac3") -> "Dolby Digital"
-            else -> ext.uppercase().ifEmpty { "AUDIO" }
-        }
+        val containerHint = AudioContainerType.fromExtension(ext)
+        val codecType = AudioCodecType.fromMimeOrCodec(mimeType, containerHint)
+        return codecType.toDisplayLabel(ext)
     }
 }

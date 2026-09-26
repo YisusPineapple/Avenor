@@ -28,6 +28,12 @@ jobs:
         continue-on-error: true
 
       # Offload build workloads without a powerful local machine by using Gradle parallel limits
+      - name: Run Unit Tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 -Pkotlin.daemon.jvm.options="-Xmx2048M"
+
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug --no-daemon --max-workers=2 -Pkotlin.daemon.jvm.options="-Xmx2048M"
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --max-workers=2 -Pkotlin.daemon.jvm.options="-Xmx2048M"
         

@@ -521,34 +521,42 @@ class LibraryScanner(
         val finalBitrate = if (record.bitrate > 0) record.bitrate else specs.bitrate
         val sortTitle = generateSortTitle(record.title)
 
-        return Song(
+        val canonicalCore = io.github.yisus.avenor.metadata.CanonicalSongCore(
             id = record.id,
             uri = contentUri.toString(),
             title = record.title,
             artist = record.artist,
             album = record.album,
+            albumArtist = record.albumArtist,
+            sortTitle = sortTitle,
+            sortArtist = generateSortTitle(record.artist),
+            sortAlbum = generateSortTitle(record.album),
             durationMs = record.duration,
-            albumArtUri = albumArtUri,
-            bitDepth = specs.bitDepth,
-            sampleRate = specs.sampleRate,
-            mimeType = if (specs.mimeType.isNotBlank()) specs.mimeType else record.mimeType,
-            fileExtension = specs.fileExtension,
-            codec = specs.codec,
-            bitrate = finalBitrate,
-            channels = specs.channels,
-            fileSize = record.size,
-            dateModified = record.dateModified,
-            dateAdded = record.dateAdded,
             trackNumber = record.trackNumber,
             discNumber = record.discNumber,
             year = record.year,
             genre = record.genre,
+            bitrate = finalBitrate,
+            sampleRate = specs.sampleRate,
+            bitDepth = specs.bitDepth,
+            channels = specs.channels,
+            codec = specs.codec,
+            container = specs.fileExtension,
+            mimeType = if (specs.mimeType.isNotBlank()) specs.mimeType else record.mimeType,
+            fileSize = record.size,
+            dateAdded = record.dateAdded,
+            dateModified = record.dateModified,
+            hasEmbeddedArtwork = albumArtUri != null,
+            replayGain = io.github.yisus.avenor.replaygain.ReplayGainData(
+                trackGain = specs.replayGainTrack,
+                albumGain = specs.replayGainAlbum
+            )
+        )
+
+        return canonicalCore.toSong(
+            albumArtUri = albumArtUri,
             composer = record.composer,
-            albumArtist = record.albumArtist,
-            sortTitle = sortTitle,
             comment = "",
-            replayGainTrack = specs.replayGainTrack,
-            replayGainAlbum = specs.replayGainAlbum,
             artworkWidth = 0,
             artworkHeight = 0,
             artworkMimeType = ""

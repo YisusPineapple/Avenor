@@ -33,6 +33,7 @@ class PlaybackService : MediaSessionService() {
     private var audioDeviceCallback: android.media.AudioDeviceCallback? = null
     private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     
+    val universalDownmixAudioProcessor = io.github.yisus.avenor.dsp.UniversalDownmixAudioProcessor()
     val replayGainAudioProcessor = io.github.yisus.avenor.replaygain.ReplayGainAudioProcessor()
     val equalizerAudioProcessor = EqualizerAudioProcessor()
     val safeLimiterAudioProcessor = io.github.yisus.avenor.replaygain.SafeLimiterAudioProcessor()
@@ -64,6 +65,7 @@ class PlaybackService : MediaSessionService() {
             
         val renderersFactory = io.github.yisus.avenor.audio.AvenorRenderersFactory(
             context = this,
+            universalDownmixAudioProcessor = universalDownmixAudioProcessor,
             replayGainAudioProcessor = replayGainAudioProcessor,
             equalizerAudioProcessor = equalizerAudioProcessor,
             safeLimiterAudioProcessor = safeLimiterAudioProcessor
@@ -415,6 +417,7 @@ class PlaybackService : MediaSessionService() {
             }
             errorRecoveryManager.release()
             crossfadeManager.release()
+            universalDownmixAudioProcessor.reset()
             equalizerAudioProcessor.reset()
             replayGainAudioProcessor.reset()
             safeLimiterAudioProcessor.reset()

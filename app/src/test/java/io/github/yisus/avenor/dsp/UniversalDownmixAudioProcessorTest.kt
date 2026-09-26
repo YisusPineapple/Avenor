@@ -4,7 +4,6 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -12,6 +11,7 @@ import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 class UniversalDownmixAudioProcessorTest {
 
@@ -19,6 +19,9 @@ class UniversalDownmixAudioProcessorTest {
 
     private val TOLERANCE_FLOAT = 1.0e-5f
     private val TOLERANCE_SHORT = 2 // max 2 short values difference due to rounding/truncation
+
+    // Independent double-precision ITU-R BS.775-3 reference constants (NOT referencing processor constants)
+    private val refInvSqrt2 = 1.0 / sqrt(2.0) // ~0.7071067811865475
 
     @Before
     fun setup() {
@@ -45,6 +48,7 @@ class UniversalDownmixAudioProcessorTest {
         val outFormat = configureAndFlush(channelCount = 1, encoding = C.ENCODING_PCM_FLOAT)
         assertTrue(processor.isActive)
         assertEquals(2, outFormat.channelCount)
+        assertEquals(AudioChannelLayout.MONO_1_0, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(1 * 4).order(ByteOrder.nativeOrder())
         input.putFloat(0.75f)
@@ -93,15 +97,17 @@ class UniversalDownmixAudioProcessorTest {
         val outFormat = configureAndFlush(channelCount = 2, encoding = C.ENCODING_PCM_FLOAT)
         assertFalse(processor.isActive)
         assertEquals(AudioProcessor.AudioFormat.NOT_SET, outFormat)
+        assertEquals(AudioChannelLayout.STEREO_2_0, processor.activeLayout)
     }
 
     // =========================================================================
-    // C. 3.0 -> STEREO
+    // C. 3.0 -> STEREO (Independent Reference Vector)
     // =========================================================================
 
     @Test
-    fun `test C1 - 3_0 to Stereo Float analytical match`() {
+    fun `test C1 - 3_0 to Stereo Float analytical match against independent ITU reference`() {
         configureAndFlush(channelCount = 3, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_3_0_SMPTE, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder())
         val l = 1.0f
@@ -116,23 +122,29 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = l * UniversalDownmixAudioProcessor.W_LR_3_0 + c * UniversalDownmixAudioProcessor.W_C_3_0
-        val expectedR = r * UniversalDownmixAudioProcessor.W_LR_3_0 + c * UniversalDownmixAudioProcessor.W_C_3_0
+        // Independent ITU-R BS.775-3 normalized formula: (L + (1/sqrt(2))*C) / (1 + 1/sqrt(2))
+        val norm30 = 1.0 + refInvSqrt2
+        val expectedL = ((l + refInvSqrt2 * c) / norm30).toFloat()
+        val expectedR = ((r + refInvSqrt2 * c) / norm30).toFloat()
 
         val actualL = output.float
         val actualR = output.float
 
         assertEquals(expectedL, actualL, TOLERANCE_FLOAT)
         assertEquals(expectedR, actualR, TOLERANCE_FLOAT)
+        // Also verify literal decimal expectations (~0.9171573f and ~0.0384776f)
+        assertEquals(0.9171573f, actualL, 1e-4f)
+        assertEquals(0.0384776f, actualR, 1e-4f)
     }
 
     // =========================================================================
-    // D. 4.0 / QUAD -> STEREO
+    // D. 4.0 / QUAD -> STEREO (Independent Reference Vector)
     // =========================================================================
 
     @Test
-    fun `test D1 - 4_0 Quad to Stereo Float analytical match`() {
+    fun `test D1 - 4_0 Quad to Stereo Float analytical match against independent reference`() {
         configureAndFlush(channelCount = 4, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.QUAD_4_0, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder())
         val l = 0.6f
@@ -149,8 +161,9 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = l * UniversalDownmixAudioProcessor.W_LR_4_0 + ls * UniversalDownmixAudioProcessor.W_SUR_4_0
-        val expectedR = r * UniversalDownmixAudioProcessor.W_LR_4_0 + rs * UniversalDownmixAudioProcessor.W_SUR_4_0
+        val norm40 = 1.0 + refInvSqrt2
+        val expectedL = ((l + refInvSqrt2 * ls) / norm40).toFloat()
+        val expectedR = ((r + refInvSqrt2 * rs) / norm40).toFloat()
 
         val actualL = output.float
         val actualR = output.float
@@ -160,12 +173,13 @@ class UniversalDownmixAudioProcessorTest {
     }
 
     // =========================================================================
-    // E. 5.0 -> STEREO
+    // E. 5.0 -> STEREO (Independent Reference Vector)
     // =========================================================================
 
     @Test
-    fun `test E1 - 5_0 to Stereo Float analytical match`() {
+    fun `test E1 - 5_0 to Stereo Float analytical match against independent reference`() {
         configureAndFlush(channelCount = 5, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_5_0_SMPTE, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(5 * 4).order(ByteOrder.nativeOrder())
         val l = 0.7f
@@ -184,8 +198,9 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = l * UniversalDownmixAudioProcessor.W_LR_5_1 + c * UniversalDownmixAudioProcessor.W_C_5_1 + ls * UniversalDownmixAudioProcessor.W_SUR_5_1
-        val expectedR = r * UniversalDownmixAudioProcessor.W_LR_5_1 + c * UniversalDownmixAudioProcessor.W_C_5_1 + rs * UniversalDownmixAudioProcessor.W_SUR_5_1
+        val norm50 = 1.0 + 2.0 * refInvSqrt2
+        val expectedL = ((l + refInvSqrt2 * c + refInvSqrt2 * ls) / norm50).toFloat()
+        val expectedR = ((r + refInvSqrt2 * c + refInvSqrt2 * rs) / norm50).toFloat()
 
         val actualL = output.float
         val actualR = output.float
@@ -195,12 +210,13 @@ class UniversalDownmixAudioProcessorTest {
     }
 
     // =========================================================================
-    // F. 5.1 -> STEREO (LFE Discard Verification)
+    // F. 5.1 -> STEREO (LFE Discard Verification & Independent Reference)
     // =========================================================================
 
     @Test
-    fun `test F1 - 5_1 to Stereo Float discards LFE and matches ITU-R BS_775`() {
+    fun `test F1 - 5_1 to Stereo Float discards LFE and matches independent ITU-R BS_775 reference`() {
         configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_5_1_SMPTE, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder())
         val l = 0.5f
@@ -222,8 +238,9 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = l * UniversalDownmixAudioProcessor.W_LR_5_1 + c * UniversalDownmixAudioProcessor.W_C_5_1 + ls * UniversalDownmixAudioProcessor.W_SUR_5_1
-        val expectedR = r * UniversalDownmixAudioProcessor.W_LR_5_1 + c * UniversalDownmixAudioProcessor.W_C_5_1 + rs * UniversalDownmixAudioProcessor.W_SUR_5_1
+        val norm51 = 1.0 + 2.0 * refInvSqrt2
+        val expectedL = ((l + refInvSqrt2 * c + refInvSqrt2 * ls) / norm51).toFloat()
+        val expectedR = ((r + refInvSqrt2 * c + refInvSqrt2 * rs) / norm51).toFloat()
 
         val actualL = output.float
         val actualR = output.float
@@ -233,7 +250,7 @@ class UniversalDownmixAudioProcessorTest {
     }
 
     @Test
-    fun `test F2 - 5_1 to Stereo 16-bit matches expected quantization`() {
+    fun `test F2 - 5_1 to Stereo 16-bit matches expected independent quantization`() {
         configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_16BIT)
 
         val input = ByteBuffer.allocateDirect(6 * 2).order(ByteOrder.nativeOrder())
@@ -256,8 +273,9 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = (l.toFloat() * UniversalDownmixAudioProcessor.W_LR_5_1 + c.toFloat() * UniversalDownmixAudioProcessor.W_C_5_1 + ls.toFloat() * UniversalDownmixAudioProcessor.W_SUR_5_1).toInt()
-        val expectedR = (r.toFloat() * UniversalDownmixAudioProcessor.W_LR_5_1 + c.toFloat() * UniversalDownmixAudioProcessor.W_C_5_1 + rs.toFloat() * UniversalDownmixAudioProcessor.W_SUR_5_1).toInt()
+        val norm51 = 1.0 + 2.0 * refInvSqrt2
+        val expectedL = ((l.toDouble() + refInvSqrt2 * c.toDouble() + refInvSqrt2 * ls.toDouble()) / norm51).toInt()
+        val expectedR = ((r.toDouble() + refInvSqrt2 * c.toDouble() + refInvSqrt2 * rs.toDouble()) / norm51).toInt()
 
         val actualL = output.short.toInt()
         val actualR = output.short.toInt()
@@ -267,12 +285,13 @@ class UniversalDownmixAudioProcessorTest {
     }
 
     // =========================================================================
-    // G. 7.1 -> STEREO
+    // G. 7.1 -> STEREO (Independent Reference Vector)
     // =========================================================================
 
     @Test
-    fun `test G1 - 7_1 to Stereo Float analytical match`() {
+    fun `test G1 - 7_1 to Stereo Float analytical match against independent reference`() {
         configureAndFlush(channelCount = 8, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_7_1_SMPTE, processor.activeLayout)
 
         val input = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder())
         val l = 0.4f
@@ -298,14 +317,78 @@ class UniversalDownmixAudioProcessorTest {
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val expectedL = l * UniversalDownmixAudioProcessor.W_LR_7_1 + c * UniversalDownmixAudioProcessor.W_C_7_1 + ls * UniversalDownmixAudioProcessor.W_SUR_7_1 + rls * UniversalDownmixAudioProcessor.W_REAR_7_1
-        val expectedR = r * UniversalDownmixAudioProcessor.W_LR_7_1 + c * UniversalDownmixAudioProcessor.W_C_7_1 + rs * UniversalDownmixAudioProcessor.W_SUR_7_1 + rrs * UniversalDownmixAudioProcessor.W_REAR_7_1
+        val norm71 = 1.0 + 2.0 * refInvSqrt2 + 0.5
+        val expectedL = ((l + refInvSqrt2 * c + refInvSqrt2 * ls + 0.5 * rls) / norm71).toFloat()
+        val expectedR = ((r + refInvSqrt2 * c + refInvSqrt2 * rs + 0.5 * rrs) / norm71).toFloat()
 
         val actualL = output.float
         val actualR = output.float
 
         assertEquals(expectedL, actualL, TOLERANCE_FLOAT)
         assertEquals(expectedR, actualR, TOLERANCE_FLOAT)
+    }
+
+    // =========================================================================
+    // H. EXPLICIT CHANNEL LAYOUTS (Vorbis/Film vs SMPTE, 3.1, 4.0 Surround)
+    // =========================================================================
+
+    @Test
+    fun `test H1 - 5_1 Vorbis Film ordering (L C R Ls Rs LFE) produces identical stereo fold-down to SMPTE`() {
+        val l = 0.6f
+        val r = -0.2f
+        val c = 0.4f
+        val lfe = 0.99f // LFE at index 3 in SMPTE, index 5 in Vorbis
+        val ls = -0.5f
+        val rs = 0.3f
+
+        // 1. SMPTE [L, R, C, LFE, Ls, Rs]
+        processor.channelLayoutOverride = AudioChannelLayout.SURROUND_5_1_SMPTE
+        configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_FLOAT)
+        val smpteIn = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder())
+        smpteIn.putFloat(l).putFloat(r).putFloat(c).putFloat(lfe).putFloat(ls).putFloat(rs).flip()
+        processor.queueInput(smpteIn)
+        val smpteOut = processor.output.order(ByteOrder.nativeOrder())
+        val smpteL = smpteOut.float
+        val smpteR = smpteOut.float
+
+        // 2. Vorbis/Film [L, C, R, Ls, Rs, LFE]
+        processor.reset()
+        processor.isVorbisFilmOrderHint = true
+        configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_5_1_VORBIS, processor.activeLayout)
+        val vorbisIn = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder())
+        vorbisIn.putFloat(l).putFloat(c).putFloat(r).putFloat(ls).putFloat(rs).putFloat(lfe).flip()
+        processor.queueInput(vorbisIn)
+        val vorbisOut = processor.output.order(ByteOrder.nativeOrder())
+        val vorbisL = vorbisOut.float
+        val vorbisR = vorbisOut.float
+
+        assertEquals(smpteL, vorbisL, TOLERANCE_FLOAT)
+        assertEquals(smpteR, vorbisR, TOLERANCE_FLOAT)
+    }
+
+    @Test
+    fun `test H2 - 4-channel 3_1 layout via Android channel mask discards LFE and mixes Center`() {
+        processor.channelMaskHint = AudioChannelLayout.MASK_3_1
+        configureAndFlush(channelCount = 4, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_3_1, processor.activeLayout)
+
+        val l = 0.8f
+        val r = 0.2f
+        val c = 0.5f
+        val lfe = 1.0f // Discarded in 3.1
+
+        val input = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder())
+        input.putFloat(l).putFloat(r).putFloat(c).putFloat(lfe).flip()
+        processor.queueInput(input)
+        val output = processor.output.order(ByteOrder.nativeOrder())
+
+        val norm31 = 1.0 + refInvSqrt2
+        val expectedL = ((l + refInvSqrt2 * c) / norm31).toFloat()
+        val expectedR = ((r + refInvSqrt2 * c) / norm31).toFloat()
+
+        assertEquals(expectedL, output.float, TOLERANCE_FLOAT)
+        assertEquals(expectedR, output.float, TOLERANCE_FLOAT)
     }
 
     // =========================================================================
@@ -338,30 +421,55 @@ class UniversalDownmixAudioProcessorTest {
     // =========================================================================
 
     @Test
-    fun `test N - NaN and Infinity pass-through or finite bounds verification`() {
+    fun `test N - NaN and Infinity samples are sanitized to finite bounds without poisoning output`() {
         configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_FLOAT)
 
-        val input = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder())
-        input.putFloat(0.0f)
-        input.putFloat(0.0f)
-        input.putFloat(0.0f)
-        input.putFloat(0.0f)
-        input.putFloat(0.0f)
-        input.putFloat(0.0f)
+        // Frame 1: NaN in L and LFE, +Infinity in C, -Infinity in Rs, valid finite in R (0.5f) and Ls (0.4f)
+        // Frame 2: All channels NaN or Infinity
+        val input = ByteBuffer.allocateDirect(2 * 6 * 4).order(ByteOrder.nativeOrder())
+        // Frame 1:
+        input.putFloat(Float.NaN)               // L -> sanitized to 0.0f
+        input.putFloat(0.5f)                    // R -> valid 0.5f
+        input.putFloat(Float.POSITIVE_INFINITY) // C -> sanitized to 0.0f
+        input.putFloat(Float.NaN)               // LFE -> discarded
+        input.putFloat(0.4f)                    // Ls -> valid 0.4f
+        input.putFloat(Float.NEGATIVE_INFINITY) // Rs -> sanitized to 0.0f
+        // Frame 2:
+        input.putFloat(Float.NaN)
+        input.putFloat(Float.POSITIVE_INFINITY)
+        input.putFloat(Float.NEGATIVE_INFINITY)
+        input.putFloat(Float.NaN)
+        input.putFloat(Float.POSITIVE_INFINITY)
+        input.putFloat(Float.NEGATIVE_INFINITY)
         input.flip()
 
         processor.queueInput(input)
         val output = processor.output
         output.order(ByteOrder.nativeOrder())
 
-        val l = output.float
-        val r = output.float
-        assertFalse(l.isNaN())
-        assertFalse(l.isInfinite())
-        assertFalse(r.isNaN())
-        assertFalse(r.isInfinite())
-        assertEquals(0.0f, l, TOLERANCE_FLOAT)
-        assertEquals(0.0f, r, TOLERANCE_FLOAT)
+        // Frame 1 verification: L has only Ls=0.4f, R has only R=0.5f
+        val norm51 = 1.0 + 2.0 * refInvSqrt2
+        val expectedFrame1L = ((0.0 + refInvSqrt2 * 0.0 + refInvSqrt2 * 0.4) / norm51).toFloat()
+        val expectedFrame1R = ((0.5 + refInvSqrt2 * 0.0 + refInvSqrt2 * 0.0) / norm51).toFloat()
+
+        val l1 = output.float
+        val r1 = output.float
+        assertFalse("l1 must not be NaN", l1.isNaN())
+        assertFalse("l1 must not be Infinite", l1.isInfinite())
+        assertFalse("r1 must not be NaN", r1.isNaN())
+        assertFalse("r1 must not be Infinite", r1.isInfinite())
+        assertEquals(expectedFrame1L, l1, TOLERANCE_FLOAT)
+        assertEquals(expectedFrame1R, r1, TOLERANCE_FLOAT)
+
+        // Frame 2 verification: all non-finite inputs sanitized to 0.0f
+        val l2 = output.float
+        val r2 = output.float
+        assertFalse("l2 must not be NaN", l2.isNaN())
+        assertFalse("l2 must not be Infinite", l2.isInfinite())
+        assertFalse("r2 must not be NaN", r2.isNaN())
+        assertFalse("r2 must not be Infinite", r2.isInfinite())
+        assertEquals(0.0f, l2, TOLERANCE_FLOAT)
+        assertEquals(0.0f, r2, TOLERANCE_FLOAT)
     }
 
     // =========================================================================
@@ -393,6 +501,7 @@ class UniversalDownmixAudioProcessorTest {
 
         processor.reset()
         assertFalse(processor.isActive)
+        assertEquals(AudioChannelLayout.UNKNOWN, processor.activeLayout)
     }
 
     @Test

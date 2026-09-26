@@ -53,12 +53,14 @@ class PlaybackServiceAudioPipelineIntegrationTest {
     }
 
     @Test
-    fun `test 21 - AvenorRenderersFactory correctly integrates into ExoPlayer with Policy A offload disabling`() {
+    fun `test 21 - AvenorRenderersFactory correctly integrates into ExoPlayer with Policy A offload disabling and 4-stage DSP chain`() {
+        val downmixProcessor = io.github.yisus.avenor.dsp.UniversalDownmixAudioProcessor()
         val rgProcessor = ReplayGainAudioProcessor()
         val limiterProcessor = SafeLimiterAudioProcessor()
 
         val factory = AvenorRenderersFactory(
             context = context,
+            universalDownmixAudioProcessor = downmixProcessor,
             replayGainAudioProcessor = rgProcessor,
             safeLimiterAudioProcessor = limiterProcessor
         )
@@ -66,9 +68,13 @@ class PlaybackServiceAudioPipelineIntegrationTest {
         val player = ExoPlayer.Builder(context, factory).build()
         assertNotNull(player)
 
-        // Verify processors are attached
-        assertEquals(rgProcessor, factory.replayGainAudioProcessor)
-        assertEquals(limiterProcessor, factory.safeLimiterAudioProcessor)
+        // Verify processors are attached in strict order: Downmix -> ReplayGain -> EQ -> SafeLimiter
+        val chain = factory.audioProcessors
+        assertEquals(4, chain.size)
+        assertEquals(downmixProcessor, chain[0])
+        assertEquals(rgProcessor, chain[1])
+        assertEquals(factory.equalizerAudioProcessor, chain[2])
+        assertEquals(limiterProcessor, chain[3])
 
         player.release()
     }
@@ -78,7 +84,9 @@ class PlaybackServiceAudioPipelineIntegrationTest {
         val serviceController = Robolectric.buildService(PlaybackService::class.java)
         val service = serviceController.create().get()
 
+        assertNotNull(service.universalDownmixAudioProcessor)
         assertNotNull(service.replayGainAudioProcessor)
+        assertNotNull(service.equalizerAudioProcessor)
         assertNotNull(service.safeLimiterAudioProcessor)
 
         // Insert song with ReplayGain metadata into DB

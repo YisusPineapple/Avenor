@@ -160,19 +160,64 @@ class AudioProcessingPipelineTest {
     }
 
     @Test
-    fun `test 21 - AvenorRenderersFactory exposes processors cleanly`() {
+    fun `test 21 - AvenorRenderersFactory exposes processors cleanly in 4-stage order and processes 5_1 to stereo`() {
+        val downmix = io.github.yisus.avenor.dsp.UniversalDownmixAudioProcessor()
         val rg = ReplayGainAudioProcessor()
+        val eq = io.github.yisus.avenor.dsp.EqualizerAudioProcessor()
         val limiter = SafeLimiterAudioProcessor()
         val factory = AvenorRenderersFactory(
             context = RuntimeEnvironment.getApplication(),
+            universalDownmixAudioProcessor = downmix,
             replayGainAudioProcessor = rg,
+            equalizerAudioProcessor = eq,
             safeLimiterAudioProcessor = limiter
         )
 
+        assertNotNull(factory.universalDownmixAudioProcessor)
         assertNotNull(factory.replayGainAudioProcessor)
+        assertNotNull(factory.equalizerAudioProcessor)
         assertNotNull(factory.safeLimiterAudioProcessor)
-        assertEquals(rg, factory.replayGainAudioProcessor)
-        assertEquals(limiter, factory.safeLimiterAudioProcessor)
+        assertEquals(downmix, factory.audioProcessors[0])
+        assertEquals(rg, factory.audioProcessors[1])
+        assertEquals(eq, factory.audioProcessors[2])
+        assertEquals(limiter, factory.audioProcessors[3])
+
+        // Configure full 4-stage chain for 5.1 (6-channel) 48kHz Float input
+        val in51 = AudioProcessor.AudioFormat(48000, 6, C.ENCODING_PCM_FLOAT)
+        val outDownmixFormat = downmix.configure(in51)
+        downmix.flush()
+        assertEquals(2, outDownmixFormat.channelCount)
+
+        rg.configure(outDownmixFormat)
+        rg.setEffectiveGainDb(3.0f)
+        rg.flush()
+
+        eq.configure(outDownmixFormat)
+        eq.flush()
+
+        limiter.configure(outDownmixFormat)
+        limiter.flush()
+
+        // Feed 1 frame of 6-channel 5.1 audio through Downmix -> ReplayGain -> EQ -> Limiter
+        val input51 = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder())
+        input51.putFloat(0.5f).putFloat(0.5f).putFloat(0.4f).putFloat(0.9f).putFloat(0.2f).putFloat(0.2f).flip()
+
+        downmix.queueInput(input51)
+        rg.queueInput(downmix.output)
+        val afterRg = if (eq.isActive) {
+            eq.queueInput(rg.output)
+            eq.output
+        } else {
+            rg.output
+        }
+        limiter.queueInput(afterRg)
+        val finalStereo = limiter.output.order(ByteOrder.nativeOrder())
+
+        assertEquals(2 * 4, finalStereo.remaining())
+        val finalL = finalStereo.float
+        val finalR = finalStereo.float
+        assertTrue(finalL.isFinite() && abs(finalL) <= 0.9801f)
+        assertTrue(finalR.isFinite() && abs(finalR) <= 0.9801f)
     }
 
     @Test

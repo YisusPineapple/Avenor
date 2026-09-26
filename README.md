@@ -69,20 +69,22 @@ cd avenor
 ## 📦 Database & Legacy Compatibility Policy
 
 ### Room Schema Versioning & Export
-- **Current Version**: 15
+- **Current Version**: 17
 - **Schema Export**: Enabled (`exportSchema = true`) via KSP under `app/schemas/` to ensure reproducible, version-controlled schema definitions for every database evolution.
 - **Destructive Migrations**: Prohibited. Avenor strictly forbids `fallbackToDestructiveMigration()` to protect local music metadata, playlists, and settings from silent data loss.
 
 ### Supported Migrations (Automatic & Non-Destructive)
-Any database on version 11 or higher can safely and automatically migrate to version 15:
-- **v11 → v12 → v13 → v14 → v15** (Full contiguous chain: `MIGRATION_11_12`, `MIGRATION_12_13`, `MIGRATION_13_14`, `MIGRATION_14_15`)
-- **v12 → v13 → v14 → v15**
-- **v13 → v14 → v15**
-- **v14 → v15**
-- **New Installations**: Directly provisioned in **v15** through standard Room creation and initial preset population callbacks.
+Any database on version 11 or higher can safely and automatically migrate to version 17:
+- **v11 → v12 → v13 → v14 → v15 → v16 → v17** (Full contiguous chain: `MIGRATION_11_12`, `MIGRATION_12_13`, `MIGRATION_13_14`, `MIGRATION_14_15`, `MIGRATION_15_16`, `MIGRATION_16_17`)
+- **v12 → v13 → v14 → v15 → v16 → v17**
+- **v13 → v14 → v15 → v16 → v17**
+- **v14 → v15 → v16 → v17**
+- **v15 → v16 → v17**
+- **v16 → v17**
+- **New Installations**: Directly provisioned in **v17** through standard Room creation and initial preset population callbacks.
 
 ### Unsupported Versions (Legacy Gap)
-- **v1, v2, v3, v4, v5, v6, v7, v8, v9, v10 → v15**
+- **v1, v2, v3, v4, v5, v6, v7, v8, v9, v10 → v17**
 - **Technical Reason**: Absence of verifiable historical schema evidence or DDL logs for intermediate transitions 5→6, 6→7, 7→8, 8→9, 9→10, and 10→11.
 - **Data Safety**: These legacy databases are not invalid or corrupted. However, Avenor cannot guarantee an automatic migration without risk of schema mismatch or data loss, and deliberately refuses to introduce speculative or destructive fallback mechanisms.
 
