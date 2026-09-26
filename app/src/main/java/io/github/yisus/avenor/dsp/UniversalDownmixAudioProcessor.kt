@@ -1,8 +1,11 @@
 package io.github.yisus.avenor.dsp
 
 import android.media.AudioFormat
+import android.media.MediaFormat
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
@@ -43,10 +46,86 @@ enum class AudioChannelLayout(
         const val MASK_3_0 = AudioFormat.CHANNEL_OUT_STEREO or AudioFormat.CHANNEL_OUT_FRONT_CENTER
         const val MASK_3_1 = MASK_3_0 or AudioFormat.CHANNEL_OUT_LOW_FREQUENCY
         const val MASK_QUAD = AudioFormat.CHANNEL_OUT_QUAD
+        const val MASK_QUAD_SIDE = AudioFormat.CHANNEL_OUT_STEREO or
+            AudioFormat.CHANNEL_OUT_SIDE_LEFT or AudioFormat.CHANNEL_OUT_SIDE_RIGHT
         const val MASK_SURROUND_4_0 = AudioFormat.CHANNEL_OUT_SURROUND
         const val MASK_5_0 = MASK_3_0 or AudioFormat.CHANNEL_OUT_BACK_LEFT or AudioFormat.CHANNEL_OUT_BACK_RIGHT
+        const val MASK_5_0_SIDE = MASK_3_0 or AudioFormat.CHANNEL_OUT_SIDE_LEFT or AudioFormat.CHANNEL_OUT_SIDE_RIGHT
         const val MASK_5_1 = AudioFormat.CHANNEL_OUT_5POINT1
+        const val MASK_5_1_SIDE = MASK_3_1 or AudioFormat.CHANNEL_OUT_SIDE_LEFT or AudioFormat.CHANNEL_OUT_SIDE_RIGHT
         const val MASK_7_1 = AudioFormat.CHANNEL_OUT_7POINT1_SURROUND
+
+        /**
+         * Converts a standard WAVEFORMATEXTENSIBLE / FLAC `dwChannelMask` bitfield
+         * into an Android [AudioFormat] `CHANNEL_OUT_*` mask.
+         */
+        fun fromWaveChannelMask(waveMask: Int): Int {
+            return when (waveMask) {
+                0x0001, 0x0004 -> MASK_MONO
+                0x0003 -> MASK_STEREO
+                0x0007 -> MASK_3_0
+                0x000F -> MASK_3_1
+                0x0033, 0x0603 -> MASK_QUAD
+                0x0107 -> MASK_SURROUND_4_0
+                0x0037, 0x0607 -> MASK_5_0
+                0x003F, 0x060F -> MASK_5_1
+                0x063F, 0x00FF -> MASK_7_1
+                else -> 0
+            }
+        }
+
+        /**
+         * Lightweight RIFF/WAVE header inspector that extracts the raw 32-bit `dwChannelMask`
+         * from a `WAVE_FORMAT_EXTENSIBLE` (`0xFFFE`) `fmt ` chunk within the initial header bytes
+         * (typically <= 128 bytes) without parsing tags or allocating stream buffers.
+         *
+         * Returns `0` if the header is not a `WAVE_FORMAT_EXTENSIBLE` WAV or has no mask.
+         */
+        fun sniffWaveExtensibleChannelMask(headerBytes: ByteArray, length: Int = headerBytes.size): Int {
+            val limit = minOf(length, headerBytes.size)
+            if (limit < 44) return 0
+            if (headerBytes[0] != 'R'.code.toByte() ||
+                headerBytes[1] != 'I'.code.toByte() ||
+                headerBytes[2] != 'F'.code.toByte() ||
+                headerBytes[3] != 'F'.code.toByte() ||
+                headerBytes[8] != 'W'.code.toByte() ||
+                headerBytes[9] != 'A'.code.toByte() ||
+                headerBytes[10] != 'V'.code.toByte() ||
+                headerBytes[11] != 'E'.code.toByte()
+            ) {
+                return 0
+            }
+
+            var pos = 12
+            while (pos + 8 <= limit) {
+                val c0 = headerBytes[pos].toInt().toChar()
+                val c1 = headerBytes[pos + 1].toInt().toChar()
+                val c2 = headerBytes[pos + 2].toInt().toChar()
+                val c3 = headerBytes[pos + 3].toInt().toChar()
+                val chunkSize = ByteBuffer.wrap(headerBytes, pos + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                val dataStart = pos + 8
+                if (c0 == 'f' && c1 == 'm' && c2 == 't' && c3 == ' ') {
+                    if (chunkSize >= 24 && dataStart + 24 <= limit) {
+                        val bb = ByteBuffer.wrap(headerBytes, dataStart, 24).order(ByteOrder.LITTLE_ENDIAN)
+                        val audioFormat = bb.short.toInt() and 0xFFFF
+                        if (audioFormat == 0xFFFE) {
+                            bb.position(dataStart + 16)
+                            val cbSize = bb.short.toInt() and 0xFFFF
+                            if (cbSize >= 6) {
+                                bb.short // validBitsPerSample
+                                return bb.int
+                            }
+                        }
+                    }
+                    return 0
+                }
+                if (chunkSize < 0) return 0
+                val padded = chunkSize + (chunkSize and 1)
+                if (dataStart + padded <= pos) return 0
+                pos = dataStart + padded
+            }
+            return 0
+        }
 
         /**
          * Resolves an [AudioChannelLayout] from an Android [AudioFormat] channel mask and channel count,
@@ -59,15 +138,24 @@ enum class AudioChannelLayout(
         ): AudioChannelLayout {
             if (androidChannelMask != 0) {
                 when (androidChannelMask) {
-                    MASK_MONO -> if (channelCount == 1) return MONO_1_0
-                    MASK_STEREO -> if (channelCount == 2) return STEREO_2_0
-                    MASK_3_0 -> if (channelCount == 3) return if (isVorbisFilmOrder) SURROUND_3_0_VORBIS else SURROUND_3_0_SMPTE
-                    MASK_3_1 -> if (channelCount == 4) return SURROUND_3_1
-                    MASK_SURROUND_4_0 -> if (channelCount == 4) return SURROUND_4_0_CENTER_REAR
-                    MASK_QUAD -> if (channelCount == 4) return QUAD_4_0
-                    MASK_5_0 -> if (channelCount == 5) return if (isVorbisFilmOrder) SURROUND_5_0_VORBIS else SURROUND_5_0_SMPTE
-                    MASK_5_1 -> if (channelCount == 6) return if (isVorbisFilmOrder) SURROUND_5_1_VORBIS else SURROUND_5_1_SMPTE
-                    MASK_7_1 -> if (channelCount == 8) return if (isVorbisFilmOrder) SURROUND_7_1_VORBIS else SURROUND_7_1_SMPTE
+                    MASK_MONO, AudioFormat.CHANNEL_OUT_FRONT_LEFT, AudioFormat.CHANNEL_OUT_FRONT_CENTER ->
+                        if (channelCount == 1) return MONO_1_0
+                    MASK_STEREO ->
+                        if (channelCount == 2) return STEREO_2_0
+                    MASK_3_0 ->
+                        if (channelCount == 3) return if (isVorbisFilmOrder) SURROUND_3_0_VORBIS else SURROUND_3_0_SMPTE
+                    MASK_3_1 ->
+                        if (channelCount == 4) return SURROUND_3_1
+                    MASK_SURROUND_4_0 ->
+                        if (channelCount == 4) return SURROUND_4_0_CENTER_REAR
+                    MASK_QUAD, MASK_QUAD_SIDE ->
+                        if (channelCount == 4) return QUAD_4_0
+                    MASK_5_0, MASK_5_0_SIDE ->
+                        if (channelCount == 5) return if (isVorbisFilmOrder) SURROUND_5_0_VORBIS else SURROUND_5_0_SMPTE
+                    MASK_5_1, MASK_5_1_SIDE ->
+                        if (channelCount == 6) return if (isVorbisFilmOrder) SURROUND_5_1_VORBIS else SURROUND_5_1_SMPTE
+                    MASK_7_1 ->
+                        if (channelCount == 8) return if (isVorbisFilmOrder) SURROUND_7_1_VORBIS else SURROUND_7_1_SMPTE
                 }
             }
 
@@ -195,6 +283,154 @@ class UniversalDownmixAudioProcessor : BaseAudioProcessor() {
     var activeLayout: AudioChannelLayout = AudioChannelLayout.UNKNOWN
         private set
 
+    /**
+     * Remembers the upstream compressed track MIME/codec before decoder output converts MIME to `audio/raw`.
+     */
+    @Volatile
+    private var lastUpstreamMimeType: String? = null
+
+    @Volatile
+    private var lastUpstreamCodecs: String? = null
+
+    @Volatile
+    private var maskSetFromDecoderMediaFormat: Boolean = false
+
+    /**
+     * Captures the upstream compressed track [Format] (e.g., from `MediaCodecAudioRenderer.onInputFormatChanged`)
+     * prior to decoding so container/codec hints remain available when PCM output is configured.
+     */
+    fun onInputTrackFormatChanged(trackFormat: Format?) {
+        if (trackFormat == null) return
+        if (!trackFormat.sampleMimeType.isNullOrBlank() && trackFormat.sampleMimeType != MimeTypes.AUDIO_RAW) {
+            lastUpstreamMimeType = trackFormat.sampleMimeType
+            maskSetFromDecoderMediaFormat = false
+        }
+        if (!trackFormat.codecs.isNullOrBlank()) {
+            lastUpstreamCodecs = trackFormat.codecs
+        }
+    }
+
+    /**
+     * Productive bridge connecting Media3 [Format] and Android decoder [MediaFormat]
+     * (`KEY_CHANNEL_MASK`, codec/container ordering) into [channelMaskHint] and [isVorbisFilmOrderHint]
+     * immediately before [DefaultAudioSink] configures this processor.
+     */
+    fun applyStreamFormat(
+        inputFormat: Format?,
+        decoderMediaFormat: MediaFormat? = null,
+        outputChannelMap: IntArray? = null
+    ) {
+        onInputTrackFormatChanged(inputFormat)
+
+        var resolvedMask = 0
+        if (decoderMediaFormat != null && decoderMediaFormat.containsKey(MediaFormat.KEY_CHANNEL_MASK)) {
+            resolvedMask = try {
+                decoderMediaFormat.getInteger(MediaFormat.KEY_CHANNEL_MASK)
+            } catch (_: Exception) {
+                0
+            }
+        }
+
+        val codecsStr = inputFormat?.codecs ?: lastUpstreamCodecs
+        if (resolvedMask == 0 && !codecsStr.isNullOrBlank()) {
+            resolvedMask = parseChannelMaskFromCodecsString(codecsStr)
+        }
+
+        if (decoderMediaFormat != null) {
+            channelMaskHint = resolvedMask
+            maskSetFromDecoderMediaFormat = (resolvedMask != 0)
+        } else if (resolvedMask != 0) {
+            channelMaskHint = resolvedMask
+        }
+
+        val customOrder = if (decoderMediaFormat != null && decoderMediaFormat.containsKey("channel-order")) {
+            try {
+                decoderMediaFormat.getString("channel-order")
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+
+        val effectiveMime = when {
+            inputFormat?.sampleMimeType != null && inputFormat.sampleMimeType != MimeTypes.AUDIO_RAW ->
+                inputFormat.sampleMimeType
+            decoderMediaFormat != null && decoderMediaFormat.containsKey(MediaFormat.KEY_MIME) &&
+                decoderMediaFormat.getString(MediaFormat.KEY_MIME) != MimeTypes.AUDIO_RAW ->
+                try { decoderMediaFormat.getString(MediaFormat.KEY_MIME) } catch (_: Exception) { null }
+            else -> lastUpstreamMimeType
+        }
+
+        when {
+            customOrder.equals("vorbis", ignoreCase = true) -> {
+                isVorbisFilmOrderHint = true
+            }
+            customOrder.equals("smpte", ignoreCase = true) -> {
+                isVorbisFilmOrderHint = false
+            }
+            codecsStr?.contains("vorbis-order", ignoreCase = true) == true -> {
+                isVorbisFilmOrderHint = true
+            }
+            codecsStr?.contains("smpte-order", ignoreCase = true) == true -> {
+                isVorbisFilmOrderHint = false
+            }
+            effectiveMime.equals(MimeTypes.AUDIO_VORBIS, ignoreCase = true) -> {
+                // If MediaCodec did not supply an explicit Android SMPTE channel mask and no output channel
+                // remapping array was applied, native Vorbis multi-channel streams follow Vorbis/Film order.
+                isVorbisFilmOrderHint = (channelMaskHint == 0 && outputChannelMap == null)
+            }
+            !effectiveMime.isNullOrBlank() && effectiveMime != MimeTypes.AUDIO_RAW -> {
+                isVorbisFilmOrderHint = false
+            }
+        }
+    }
+
+    /**
+     * Invoked by [io.github.yisus.avenor.audio.AvenorAudioSink.configure] right before
+     * `DefaultAudioSink` configures its internal `AudioProcessor` chain.
+     * Preserves any `decoderMediaFormat` hints already set by `onOutputFormatChanged` while
+     * extracting fallback metadata from the sink's `inputFormat`.
+     */
+    fun onSinkConfigureFormat(inputFormat: Format, outputChannels: IntArray?) {
+        val preservedMask = if (maskSetFromDecoderMediaFormat) channelMaskHint else 0
+        val hadVorbis = isVorbisFilmOrderHint
+        applyStreamFormat(inputFormat = inputFormat, decoderMediaFormat = null, outputChannelMap = outputChannels)
+        if (preservedMask != 0 && channelMaskHint == 0) {
+            channelMaskHint = preservedMask
+        }
+        if (hadVorbis && outputChannels != null) {
+            // DefaultAudioSink's internal ChannelMappingAudioProcessor already remaps Vorbis to SMPTE
+            // when outputChannels != null
+            isVorbisFilmOrderHint = false
+        } else if (hadVorbis && inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW && inputFormat.codecs.isNullOrBlank()) {
+            isVorbisFilmOrderHint = true
+        }
+    }
+
+    private fun parseChannelMaskFromCodecsString(codecs: String): Int {
+        val lower = codecs.trim().lowercase()
+        val wavePrefix = "wave_channel_mask="
+        val maskPrefix = "channel_mask="
+        if (lower.contains(wavePrefix)) {
+            val raw = lower.substringAfter(wavePrefix).substringBefore(";").substringBefore(",").trim()
+            val parsed = raw.removePrefix("0x").toIntOrNull(if (raw.startsWith("0x")) 16 else 10)
+            if (parsed != null) return AudioChannelLayout.fromWaveChannelMask(parsed)
+        }
+        if (lower.contains(maskPrefix)) {
+            val raw = lower.substringAfter(maskPrefix).substringBefore(";").substringBefore(",").trim()
+            val parsed = raw.removePrefix("0x").toIntOrNull(if (raw.startsWith("0x")) 16 else 10)
+            if (parsed != null) return parsed
+        }
+        return when {
+            lower == "3.1" || lower.contains("layout=3.1") -> AudioChannelLayout.MASK_3_1
+            lower == "4.0-surround" || lower.contains("layout=4.0-surround") || lower.contains("layout=surround") ->
+                AudioChannelLayout.MASK_SURROUND_4_0
+            lower == "quad" || lower.contains("layout=quad") -> AudioChannelLayout.MASK_QUAD
+            lower == "5.1" || lower.contains("layout=5.1") -> AudioChannelLayout.MASK_5_1
+            lower == "7.1" || lower.contains("layout=7.1") -> AudioChannelLayout.MASK_7_1
+            else -> 0
+        }
+    }
+
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val encoding = inputAudioFormat.encoding
         if (encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT) {
@@ -236,6 +472,9 @@ class UniversalDownmixAudioProcessor : BaseAudioProcessor() {
         channelLayoutOverride = null
         channelMaskHint = 0
         isVorbisFilmOrderHint = false
+        lastUpstreamMimeType = null
+        lastUpstreamCodecs = null
+        maskSetFromDecoderMediaFormat = false
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {

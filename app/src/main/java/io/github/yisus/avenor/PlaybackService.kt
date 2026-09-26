@@ -6,9 +6,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 
 import android.os.Bundle
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -24,6 +26,7 @@ import io.github.yisus.avenor.dsp.EqPreferences
 import io.github.yisus.avenor.dsp.EqualizerAudioProcessor
 import io.github.yisus.avenor.playback.PlaybackCoordinator
 
+@OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     internal var mediaSession: MediaSession? = null
     internal lateinit var errorRecoveryManager: ErrorRecoveryManager
@@ -59,17 +62,15 @@ class PlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
             
-        val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
-            .setConstantBitrateSeekingEnabled(true)
-            .setConstantBitrateSeekingAlwaysEnabled(true)
-            
         val renderersFactory = io.github.yisus.avenor.audio.AvenorRenderersFactory(
             context = this,
             universalDownmixAudioProcessor = universalDownmixAudioProcessor,
             replayGainAudioProcessor = replayGainAudioProcessor,
             equalizerAudioProcessor = equalizerAudioProcessor,
             safeLimiterAudioProcessor = safeLimiterAudioProcessor
-        ).setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        )
+        val extractorsFactory = renderersFactory.buildExtractorsFactory()
+        renderersFactory.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             
         // Configure LoadControl:
         // - Buffer durations define the forward buffering policy for the active MediaItem.

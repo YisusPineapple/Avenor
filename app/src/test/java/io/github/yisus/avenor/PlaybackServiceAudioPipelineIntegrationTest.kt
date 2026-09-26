@@ -211,4 +211,165 @@ class PlaybackServiceAudioPipelineIntegrationTest {
         assertNotNull(retrieved)
         assertEquals(1, retrieved!!.id)
     }
+
+    @Test
+    fun `test 28 - AvenorRenderersFactory AvenorMediaCodecAudioRenderer and AvenorAudioSink propagate MediaFormat KEY_CHANNEL_MASK into UniversalDownmixAudioProcessor`() {
+        val downmixProcessor = io.github.yisus.avenor.dsp.UniversalDownmixAudioProcessor()
+        val factory = AvenorRenderersFactory(
+            context = context,
+            universalDownmixAudioProcessor = downmixProcessor
+        )
+
+        val renderers = java.util.ArrayList<androidx.media3.exoplayer.Renderer>()
+        val audioSink = factory.buildAudioSink(
+            context = context,
+            enableFloatOutput = false,
+            enableAudioTrackPlaybackParams = false
+        )
+        assertTrue(audioSink is io.github.yisus.avenor.audio.AvenorAudioSink)
+
+        factory.buildAudioRenderers(
+            context = context,
+            extensionRendererMode = androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+            mediaCodecSelector = androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT,
+            enableDecoderFallback = true,
+            audioSink = audioSink,
+            eventHandler = android.os.Handler(android.os.Looper.getMainLooper()),
+            eventListener = object : androidx.media3.exoplayer.audio.AudioRendererEventListener {},
+            out = renderers
+        )
+        assertEquals(1, renderers.size)
+        val renderer = renderers[0] as io.github.yisus.avenor.audio.AvenorMediaCodecAudioRenderer
+
+        // 1. Simulate MediaCodec emitting 4-channel 3.1 PCM output with Android KEY_CHANNEL_MASK = MASK_3_1
+        val inputFormat31 = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_AC3)
+            .setChannelCount(4)
+            .setSampleRate(48000)
+            .build()
+        val mediaFormat31 = android.media.MediaFormat().apply {
+            setString(android.media.MediaFormat.KEY_MIME, androidx.media3.common.MimeTypes.AUDIO_RAW)
+            setInteger(android.media.MediaFormat.KEY_SAMPLE_RATE, 48000)
+            setInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT, 4)
+            setInteger(
+                android.media.MediaFormat.KEY_CHANNEL_MASK,
+                io.github.yisus.avenor.dsp.AudioChannelLayout.MASK_3_1
+            )
+        }
+
+        // Renderer onOutputFormatChanged forwards Format + MediaFormat into downmixProcessor and configures AudioSink
+        renderer.onOutputFormatChanged(inputFormat31, mediaFormat31)
+        assertEquals(
+            io.github.yisus.avenor.dsp.AudioChannelLayout.SURROUND_3_1,
+            downmixProcessor.activeLayout
+        )
+
+        // 2. Reset sink and configure with 6-channel Vorbis stream through AvenorAudioSink
+        audioSink.reset()
+        val vorbisFormat = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_VORBIS)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        val rawPcm6Ch = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_RAW)
+            .setPcmEncoding(androidx.media3.common.C.ENCODING_PCM_16BIT)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        downmixProcessor.onInputTrackFormatChanged(vorbisFormat)
+        audioSink.configure(rawPcm6Ch, 0, null)
+        assertEquals(
+            io.github.yisus.avenor.dsp.AudioChannelLayout.SURROUND_5_1_VORBIS,
+            downmixProcessor.activeLayout
+        )
+    }
+
+    @Test
+    fun `test 29 - WAVE_FORMAT_EXTENSIBLE WAV stream propagates dwChannelMask through AvenorChannelMaskExtractorAdapter into UniversalDownmixAudioProcessor`() {
+        val downmixProcessor = io.github.yisus.avenor.dsp.UniversalDownmixAudioProcessor()
+        val factory = AvenorRenderersFactory(
+            context = context,
+            universalDownmixAudioProcessor = downmixProcessor
+        )
+        val audioSink = factory.buildAudioSink(
+            context = context,
+            enableFloatOutput = false,
+            enableAudioTrackPlaybackParams = false
+        )
+        val extractorsFactory = factory.buildExtractorsFactory()
+
+        // Helper to build a valid 68-byte WAVE_FORMAT_EXTENSIBLE (0xFFFE) 4-channel 16-bit 48kHz WAV header + 16 bytes PCM
+        fun buildWaveExtensibleBytes(dwChannelMask: Int): ByteArray {
+            val buf = java.nio.ByteBuffer.allocate(84).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            buf.put("RIFF".toByteArray(Charsets.US_ASCII))
+            buf.putInt(76)
+            buf.put("WAVE".toByteArray(Charsets.US_ASCII))
+            buf.put("fmt ".toByteArray(Charsets.US_ASCII))
+            buf.putInt(40) // extensible fmt chunk size = 40
+            buf.putShort(0xFFFE.toShort()) // WAVE_FORMAT_EXTENSIBLE
+            buf.putShort(4) // 4 channels
+            buf.putInt(48000) // 48 kHz
+            buf.putInt(48000 * 4 * 2) // byteRate
+            buf.putShort((4 * 2).toShort()) // blockAlign
+            buf.putShort(16) // bitsPerSample
+            buf.putShort(22) // cbSize = 22
+            buf.putShort(16) // wValidBitsPerSample = 16
+            buf.putInt(dwChannelMask) // dwChannelMask
+            // KSDATAFORMAT_SUBTYPE_PCM GUID: 00000001-0000-0010-8000-00AA00389B71
+            buf.putInt(0x00000001)
+            buf.putShort(0x0000)
+            buf.putShort(0x0010)
+            buf.put(byteArrayOf(0x80.toByte(), 0x00, 0x00, 0xAA.toByte(), 0x00, 0x38, 0x9B.toByte(), 0x71))
+            buf.put("data".toByteArray(Charsets.US_ASCII))
+            buf.putInt(16)
+            buf.put(ByteArray(16))
+            return buf.array()
+        }
+
+        // 1. Test 4.0 Center-Rear WAV (dwChannelMask = 0x0107: FL | FR | FC | BC)
+        val wav40Bytes = buildWaveExtensibleBytes(0x0107)
+        val dataSource40 = androidx.media3.datasource.ByteArrayDataSource(wav40Bytes)
+        dataSource40.open(androidx.media3.datasource.DataSpec(android.net.Uri.parse("memory://wav40.wav")))
+        val input40 = androidx.media3.extractor.DefaultExtractorInput(
+            dataSource40,
+            0L,
+            wav40Bytes.size.toLong()
+        )
+        val wavExtractor = extractorsFactory.createExtractors().first { extractor ->
+            try {
+                extractor.sniff(input40)
+            } catch (_: java.io.EOFException) {
+                false
+            } finally {
+                input40.resetPeekPosition()
+            }
+        }
+        var emittedFormat: androidx.media3.common.Format? = null
+        wavExtractor.init(object : androidx.media3.extractor.ExtractorOutput {
+            override fun track(id: Int, type: Int): androidx.media3.extractor.TrackOutput {
+                val dummy = androidx.media3.extractor.DummyTrackOutput()
+                return object : androidx.media3.extractor.TrackOutput by dummy {
+                    override fun format(format: androidx.media3.common.Format) {
+                        emittedFormat = format
+                        dummy.format(format)
+                    }
+                }
+            }
+            override fun endTracks() {}
+            override fun seekMap(seekMap: androidx.media3.extractor.SeekMap) {}
+        })
+        val posHolder = androidx.media3.extractor.PositionHolder()
+        while (emittedFormat == null) {
+            if (wavExtractor.read(input40, posHolder) == androidx.media3.extractor.Extractor.RESULT_END_OF_INPUT) break
+        }
+        assertNotNull(emittedFormat)
+        assertTrue(emittedFormat!!.codecs?.contains("wave_channel_mask=0x107") == true)
+
+        audioSink.configure(emittedFormat!!, 0, null)
+        assertEquals(
+            io.github.yisus.avenor.dsp.AudioChannelLayout.SURROUND_4_0_CENTER_REAR,
+            downmixProcessor.activeLayout
+        )
+    }
 }

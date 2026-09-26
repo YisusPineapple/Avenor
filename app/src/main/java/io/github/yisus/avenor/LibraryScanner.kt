@@ -511,31 +511,90 @@ class LibraryScanner(
         )
     }
 
+    /**
+     * Builds a [Song] entity from a [DiscoveredMediaRecord] via [ExtendedMetadataExtractor] and
+     * [io.github.yisus.avenor.metadata.CanonicalSongCore].
+     *
+     * Persistence Scope in Room v17 (P2-7.1B.1):
+     * - Persisted in `songs` table (v17): `id`, `title`, `artist`, `album`, `albumArtist`, `duration`,
+     *   `uri`, `albumArtUri`, `bitDepth`, `sampleRate`, `dateAdded`, `dateModified`, `size`, `mimeType`,
+     *   `fileExtension`, `codec`, `bitrate`, `channels`, `trackNumber`, `discNumber`, `year`, `genre`,
+     *   `composer`, `comment`, `sortTitle`, `artworkWidth`, `artworkHeight`, `artworkMimeType`,
+     *   `replayGainTrack`, `replayGainAlbum`.
+     * - Prepared in-memory via domain contracts ([io.github.yisus.avenor.metadata.ExtendedMetadataBlock],
+     *   [io.github.yisus.avenor.metadata.SongLyricsBlock], [io.github.yisus.avenor.metadata.SongArtworkDescriptor])
+     *   for future schema phases without forcing a Room 17->18 migration in P2-7.1B.1:
+     *   multi-value credits (`lyricists`, `conductors`, `performers`, `remixers`), catalog identifiers
+     *   (`isrc`, `barcode`, `catalogNumber`, `musicBrainz*Id`), embedded lyrics payload (`syncedLyricsLrc`,
+     *   `unsyncedLyrics`), and content-addressed artwork deduplication fields (`artworkHash`, `durableRelativePath`).
+     */
     private fun extractSongFromRecord(record: DiscoveredMediaRecord): Song {
         val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, record.id)
         val albumArtUri = if (record.albumId > 0) "content://media/external/audio/albumart/${record.albumId}" else null
 
-        // Extract technical specs using MetadataExtractor (throws on failure so caller can record error)
+        // Extract technical specs and domain metadata blocks using MetadataExtractor
         val specs = metadataExtractor.extract(context, contentUri, record.filePath)
+        val extendedBlock = specs.extendedMetadata?.copy(songId = record.id)
+        val lyricsBlock = specs.lyricsBlock?.copy(songId = record.id)
+        val artworkDescriptor = specs.artworkDescriptor?.copy(
+            songId = record.id,
+            legacyUri = specs.artworkDescriptor.legacyUri ?: albumArtUri
+        )
+
+        val rawTags = extendedBlock?.rawTags.orEmpty()
+        val effectiveTitle = if (record.title.isBlank() || record.title == "Unknown Title" || record.title == "<unknown>") {
+            rawTags["TITLE"]?.firstOrNull { it.isNotBlank() } ?: record.title
+        } else record.title
+        val effectiveArtist = if (record.artist.isBlank() || record.artist == "Unknown Artist" || record.artist == "<unknown>") {
+            rawTags["ARTIST"]?.firstOrNull { it.isNotBlank() } ?: record.artist
+        } else record.artist
+        val effectiveAlbum = if (record.album.isBlank() || record.album == "Unknown Album" || record.album == "<unknown>") {
+            rawTags["ALBUM"]?.firstOrNull { it.isNotBlank() } ?: record.album
+        } else record.album
+        val effectiveAlbumArtist = if (record.albumArtist.isBlank() || record.albumArtist == "<unknown>") {
+            rawTags["ALBUMARTIST"]?.firstOrNull { it.isNotBlank() } ?: effectiveArtist
+        } else record.albumArtist
+        val effectiveTrackNumber = if (record.trackNumber > 0) {
+            record.trackNumber
+        } else {
+            rawTags["TRACKNUMBER"]?.firstOrNull()?.substringBefore('/')?.trim()?.toIntOrNull() ?: 0
+        }
+        val effectiveDiscNumber = if (record.discNumber > 0) {
+            record.discNumber
+        } else {
+            rawTags["DISCNUMBER"]?.firstOrNull()?.substringBefore('/')?.trim()?.toIntOrNull() ?: 1
+        }
 
         val finalBitrate = if (record.bitrate > 0) record.bitrate else specs.bitrate
-        val sortTitle = generateSortTitle(record.title)
+        val sortTitle = generateSortTitle(effectiveTitle)
+        val effectiveYear = if (record.year > 0) {
+            record.year
+        } else {
+            extendedBlock?.releaseDate?.take(4)?.toIntOrNull() ?: 0
+        }
+        val effectiveGenre = record.genre.ifBlank {
+            extendedBlock?.genres?.joinToString(", ").orEmpty()
+        }
+        val effectiveComposer = record.composer.ifBlank {
+            extendedBlock?.composers?.joinToString(", ").orEmpty()
+        }
+        val effectiveComment = extendedBlock?.comment.orEmpty()
 
         val canonicalCore = io.github.yisus.avenor.metadata.CanonicalSongCore(
             id = record.id,
             uri = contentUri.toString(),
-            title = record.title,
-            artist = record.artist,
-            album = record.album,
-            albumArtist = record.albumArtist,
+            title = effectiveTitle,
+            artist = effectiveArtist,
+            album = effectiveAlbum,
+            albumArtist = effectiveAlbumArtist,
             sortTitle = sortTitle,
-            sortArtist = generateSortTitle(record.artist),
-            sortAlbum = generateSortTitle(record.album),
+            sortArtist = generateSortTitle(effectiveArtist),
+            sortAlbum = generateSortTitle(effectiveAlbum),
             durationMs = record.duration,
-            trackNumber = record.trackNumber,
-            discNumber = record.discNumber,
-            year = record.year,
-            genre = record.genre,
+            trackNumber = effectiveTrackNumber,
+            discNumber = effectiveDiscNumber,
+            year = effectiveYear,
+            genre = effectiveGenre,
             bitrate = finalBitrate,
             sampleRate = specs.sampleRate,
             bitDepth = specs.bitDepth,
@@ -546,7 +605,8 @@ class LibraryScanner(
             fileSize = record.size,
             dateAdded = record.dateAdded,
             dateModified = record.dateModified,
-            hasEmbeddedArtwork = albumArtUri != null,
+            hasEmbeddedArtwork = albumArtUri != null || artworkDescriptor != null,
+            hasLyrics = lyricsBlock?.hasAnyLyrics == true,
             replayGain = io.github.yisus.avenor.replaygain.ReplayGainData(
                 trackGain = specs.replayGainTrack,
                 albumGain = specs.replayGainAlbum
@@ -555,11 +615,11 @@ class LibraryScanner(
 
         return canonicalCore.toSong(
             albumArtUri = albumArtUri,
-            composer = record.composer,
-            comment = "",
-            artworkWidth = 0,
-            artworkHeight = 0,
-            artworkMimeType = ""
+            composer = effectiveComposer,
+            comment = effectiveComment,
+            artworkWidth = artworkDescriptor?.width ?: 0,
+            artworkHeight = artworkDescriptor?.height ?: 0,
+            artworkMimeType = artworkDescriptor?.mimeType ?: ""
         )
     }
 

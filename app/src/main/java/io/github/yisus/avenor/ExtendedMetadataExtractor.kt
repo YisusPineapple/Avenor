@@ -7,10 +7,15 @@ import android.net.Uri
 import android.util.Log
 import io.github.yisus.avenor.metadata.AudioCodecType
 import io.github.yisus.avenor.metadata.AudioContainerType
+import io.github.yisus.avenor.metadata.BinaryHeaderMetadataExtractor
 import io.github.yisus.avenor.metadata.DefaultMetadataExtractorResolver
+import io.github.yisus.avenor.metadata.ExtendedMetadataBlock
 import io.github.yisus.avenor.metadata.MetadataExtractorResolver
 import io.github.yisus.avenor.metadata.RawMetadataPackage
 import io.github.yisus.avenor.metadata.SeekableFileSource
+import io.github.yisus.avenor.metadata.SongArtworkDescriptor
+import io.github.yisus.avenor.metadata.SongLyricsBlock
+import io.github.yisus.avenor.replaygain.ReplayGainData
 import io.github.yisus.avenor.replaygain.ReplayGainParser
 import java.io.File
 
@@ -36,19 +41,43 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         val bitrate: Long = 0L,
         val channels: Int = 2,
         val replayGainTrack: Float? = null,
-        val replayGainAlbum: Float? = null
+        val replayGainAlbum: Float? = null,
+        val extendedMetadata: ExtendedMetadataBlock? = null,
+        val lyricsBlock: SongLyricsBlock? = null,
+        val artworkDescriptor: SongArtworkDescriptor? = null
     )
 
     /**
      * Extracts a low-level [RawMetadataPackage] directly from a [SeekableFileSource]
      * using the configured [MetadataExtractorResolver].
+     *
+     * By default, [includeArtworkBytes] is `false` so batch library scanning inspects only
+     * the lightweight picture header (`width`, `height`, `mimeType`, `dataLength`) without
+     * loading multi-megabyte image payloads into RAM.
      */
     fun extractFromSource(
         source: SeekableFileSource,
-        containerHint: AudioContainerType = AudioContainerType.UNKNOWN
+        containerHint: AudioContainerType = AudioContainerType.UNKNOWN,
+        includeArtworkBytes: Boolean = false
     ): RawMetadataPackage {
         val containerExtractor = resolver.resolve(source, containerHint)
-        return containerExtractor.extract(source)
+        return containerExtractor.extract(source, includeArtworkBytes)
+    }
+
+    /**
+     * Resolves [ReplayGainData] directly from an already-extracted [RawMetadataPackage] without
+     * re-opening the file stream or allocating a full ID3 tag buffer.
+     */
+    fun extractReplayGainFromPackage(pkg: RawMetadataPackage?): ReplayGainData {
+        if (pkg == null || pkg.properties.isEmpty()) return ReplayGainData()
+        val flatTags = LinkedHashMap<String, String>(pkg.properties.size)
+        for ((key, values) in pkg.properties) {
+            val firstVal = values.firstOrNull { it.isNotBlank() }
+            if (firstVal != null) {
+                flatTags[key] = firstVal
+            }
+        }
+        return ReplayGainParser.parseTags(flatTags)
     }
 
     override fun extract(context: Context, uri: Uri, filePath: String?): AudioSpecs {
@@ -66,7 +95,7 @@ object ExtendedMetadataExtractor : MetadataExtractor {
             }
         }
 
-        // 1. Sniff & extract binary header package via SeekableFileSource when accessible
+        // 1. Sniff & extract lightweight binary header package via SeekableFileSource (includeArtworkBytes = false)
         var binaryPkg: RawMetadataPackage? = null
         var sniffedContainer: AudioContainerType = AudioContainerType.fromExtension(ext)
         try {
@@ -75,17 +104,26 @@ object ExtendedMetadataExtractor : MetadataExtractor {
                 if (sniffedContainer != AudioContainerType.UNKNOWN && ext == "mp3" && sniffedContainer.standardExtension != "raw") {
                     ext = sniffedContainer.standardExtension
                 }
-                binaryPkg = extractFromSource(source, sniffedContainer)
+                binaryPkg = extractFromSource(source, sniffedContainer, includeArtworkBytes = false)
             }
         } catch (e: Exception) {
             Log.d(TAG, "SeekableFileSource binary header pass skipped for $uri: ${e.message}")
         }
 
+        var extendedBlock: ExtendedMetadataBlock? = null
+        var lyricsBlock: SongLyricsBlock? = null
+        var artworkDescriptor: SongArtworkDescriptor? = null
+
         if (binaryPkg != null) {
-            if (binaryPkg!!.sampleRate > 0) sampleRate = binaryPkg!!.sampleRate
-            if (binaryPkg!!.channelCount > 0) channels = binaryPkg!!.channelCount
-            if (binaryPkg!!.bitDepth > 0) bitDepth = binaryPkg!!.bitDepth
-            if (binaryPkg!!.bitrate > 0L) bitrate = binaryPkg!!.bitrate
+            val pkg = binaryPkg!!
+            if (pkg.sampleRate > 0) sampleRate = pkg.sampleRate
+            if (pkg.channelCount > 0) channels = pkg.channelCount
+            if (pkg.bitDepth > 0) bitDepth = pkg.bitDepth
+            if (pkg.bitrate > 0L) bitrate = pkg.bitrate
+
+            extendedBlock = ExtendedMetadataBlock.fromRawPackage(0L, pkg)
+            lyricsBlock = SongLyricsBlock.fromRawPackage(0L, pkg)
+            artworkDescriptor = SongArtworkDescriptor.fromRawPackage(0L, pkg)
         }
 
         // 2. Platform MediaExtractor pass for container/track format verification
@@ -139,11 +177,17 @@ object ExtendedMetadataExtractor : MetadataExtractor {
         }
 
         val codec = resolveCodec(mimeType, ext)
-        val replayGainData = try {
-            ReplayGainParser.extractFromUri(context, uri, filePath)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing ReplayGain for $uri: ${e.message}")
-            io.github.yisus.avenor.replaygain.ReplayGainData()
+        val fromBinaryPackage = extractReplayGainFromPackage(binaryPkg)
+        val coveredByBinaryExtractor = binaryPkg != null && BinaryHeaderMetadataExtractor.canHandle(sniffedContainer)
+        val replayGainData = if (coveredByBinaryExtractor || fromBinaryPackage.hasGain || fromBinaryPackage.hasPeak) {
+            fromBinaryPackage
+        } else {
+            try {
+                ReplayGainParser.extractFromUri(context, uri, filePath)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing ReplayGain for $uri: ${e.message}")
+                ReplayGainData()
+            }
         }
 
         return AudioSpecs(
@@ -155,7 +199,10 @@ object ExtendedMetadataExtractor : MetadataExtractor {
             bitrate = bitrate,
             channels = channels,
             replayGainTrack = replayGainData.trackGain,
-            replayGainAlbum = replayGainData.albumGain
+            replayGainAlbum = replayGainData.albumGain,
+            extendedMetadata = extendedBlock,
+            lyricsBlock = lyricsBlock,
+            artworkDescriptor = artworkDescriptor
         )
     }
 

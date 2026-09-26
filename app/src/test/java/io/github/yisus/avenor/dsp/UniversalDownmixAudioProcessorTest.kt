@@ -553,6 +553,50 @@ class UniversalDownmixAudioProcessorTest {
         assertEquals(frameCount * 2 * 4, output.remaining())
     }
 
+    @Test
+    fun `test H3 - Stream Format and WAVEFORMATEXTENSIBLE mask propagation resolves 3_1, 4_0 Center-Rear, and Vorbis 5_1 without manual hints`() {
+        // 1. 4-channel stream with WAVEFORMATEXTENSIBLE mask 0x000F (3.1: FL|FR|FC|LFE)
+        val format31 = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_FLAC)
+            .setCodecs("wave_channel_mask=0x000F")
+            .setChannelCount(4)
+            .setSampleRate(48000)
+            .build()
+        processor.onSinkConfigureFormat(format31, null)
+        configureAndFlush(channelCount = 4, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_3_1, processor.activeLayout)
+
+        // 2. 4-channel stream with WAVEFORMATEXTENSIBLE mask 0x0107 (4.0 Center-Rear: FL|FR|FC|BC)
+        processor.reset()
+        val format40Cr = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_FLAC)
+            .setCodecs("wave_channel_mask=0x0107")
+            .setChannelCount(4)
+            .setSampleRate(48000)
+            .build()
+        processor.onSinkConfigureFormat(format40Cr, null)
+        configureAndFlush(channelCount = 4, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_4_0_CENTER_REAR, processor.activeLayout)
+
+        // 3. 6-channel Vorbis stream propagated via onInputTrackFormatChanged -> onSinkConfigureFormat
+        processor.reset()
+        val vorbisTrackFormat = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_VORBIS)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        val rawPcmSinkFormat = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_RAW)
+            .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        processor.onInputTrackFormatChanged(vorbisTrackFormat)
+        processor.onSinkConfigureFormat(rawPcmSinkFormat, null)
+        configureAndFlush(channelCount = 6, encoding = C.ENCODING_PCM_FLOAT)
+        assertEquals(AudioChannelLayout.SURROUND_5_1_VORBIS, processor.activeLayout)
+    }
+
     // =========================================================================
     // PERFORMANCE / BENCHMARK TEST (JVM)
     // =========================================================================

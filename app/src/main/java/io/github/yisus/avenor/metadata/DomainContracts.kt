@@ -393,6 +393,23 @@ data class SongArtworkDescriptor(
                     durableRelativePath = "media_art/$hash.bin",
                     legacyUri = fallbackLegacyUri,
                     mimeType = pkg.rawArtworkMime ?: "image/jpeg",
+                    width = pkg.rawArtworkWidth,
+                    height = pkg.rawArtworkHeight,
+                    artworkType = pkg.rawArtworkType,
+                    sourceType = ArtworkSourceType.EMBEDDED
+                )
+            }
+            if (pkg.hasEmbeddedArtwork) {
+                val headerSignature = "embedded:${pkg.rawArtworkMime.orEmpty()}:${pkg.rawArtworkWidth}x${pkg.rawArtworkHeight}:${pkg.rawArtworkDataLength}:${fallbackLegacyUri.orEmpty()}"
+                val hash = computeContentHash(headerSignature.toByteArray(Charsets.UTF_8))
+                return SongArtworkDescriptor(
+                    songId = songId,
+                    artworkHash = hash,
+                    durableRelativePath = null, // Bytes not extracted during lightweight header scan
+                    legacyUri = fallbackLegacyUri,
+                    mimeType = pkg.rawArtworkMime ?: "image/jpeg",
+                    width = pkg.rawArtworkWidth,
+                    height = pkg.rawArtworkHeight,
                     artworkType = pkg.rawArtworkType,
                     sourceType = ArtworkSourceType.EMBEDDED
                 )

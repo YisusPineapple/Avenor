@@ -3,6 +3,8 @@ package io.github.yisus.avenor.replaygain
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.metadata.id3.CommentFrame
 import androidx.media3.extractor.metadata.id3.Id3Decoder
 import androidx.media3.extractor.metadata.id3.InternalFrame
@@ -22,6 +24,7 @@ import java.nio.ByteOrder
  * - Vorbis Comments (FLAC, Ogg Vorbis, Opus): REPLAYGAIN_TRACK_GAIN, REPLAYGAIN_ALBUM_GAIN, REPLAYGAIN_TRACK_PEAK, REPLAYGAIN_ALBUM_PEAK, R128_TRACK_GAIN, R128_ALBUM_GAIN
  * - MP4/M4A: Freeform atoms (----:com.apple.iTunes:replaygain_track_gain, replaygain_album_gain)
  */
+@OptIn(UnstableApi::class)
 object ReplayGainParser {
 
     private const val TAG = "ReplayGainParser"
