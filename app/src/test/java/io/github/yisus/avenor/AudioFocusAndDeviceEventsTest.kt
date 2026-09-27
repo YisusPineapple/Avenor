@@ -86,7 +86,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 01 - AUTO_TRANSITION with crossfade OFF preserves 1_0f volume and zero artificial delay`() {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = false
         player.volume = 1.0f
 
@@ -105,7 +105,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 02 - AUTO_TRANSITION with crossfade ON applies fade in and smoothly restores 1_0f`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
         player.volume = 1.0f
 
@@ -130,7 +130,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 03 - manual skip forward with crossfade ON smoothly fades out and in`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
 
         crossfadeManager.manualSkip(forward = true, force = true)
@@ -153,7 +153,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 04 - manual skip backward with crossfade OFF performs direct transition without volume manipulation`() {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = false
         player.volume = 1.0f
 
@@ -171,7 +171,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 05 - pause during transition immediately cancels animation and restores volume to 1_0f`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
 
         crossfadeManager.manualSkip(forward = true, force = true)
@@ -192,7 +192,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 06 - stop during transition immediately aborts animation and restores volume to 1_0f`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
 
         crossfadeManager.manualSkip(forward = true, force = true)
@@ -211,7 +211,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 07 - seek during transition cancels fade animation and restores clean volume`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
 
         crossfadeManager.manualSkip(forward = true, force = true)
@@ -231,7 +231,7 @@ class AudioFocusAndDeviceEventsTest {
     @Test
     fun `test 08 - error during next track preparation is recovered by ErrorRecoveryManager and restores clean state`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         val errorRecoveryManager = ErrorRecoveryManager(player)
 
         crossfadeManager.manualSkip(forward = true, force = true)

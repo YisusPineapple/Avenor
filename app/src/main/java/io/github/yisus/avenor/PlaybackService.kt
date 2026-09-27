@@ -32,7 +32,7 @@ import io.github.yisus.avenor.playback.PlaybackCoordinator
 class PlaybackService : MediaSessionService() {
     internal var mediaSession: MediaSession? = null
     internal lateinit var errorRecoveryManager: ErrorRecoveryManager
-    internal lateinit var crossfadeManager: CrossfadeManager
+    internal lateinit var crossfadeManager: DualPlayerCrossfadeManager
     internal lateinit var playbackCoordinator: PlaybackCoordinator
     internal lateinit var eqPreferences: EqPreferences
     private var audioDeviceCallback: android.media.AudioDeviceCallback? = null
@@ -99,7 +99,7 @@ class PlaybackService : MediaSessionService() {
             .build()
             
         errorRecoveryManager = ErrorRecoveryManager(player)
-        crossfadeManager = CrossfadeManager(player, this)
+        crossfadeManager = DualPlayerCrossfadeManager(this, player, renderersFactory)
             
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -220,6 +220,7 @@ class PlaybackService : MediaSessionService() {
                         showLikeButton = appSettings.showLike
                         showShuffleButton = appSettings.showShuffle
                         showRepeatButton = appSettings.showRepeat
+                        crossfadeManager.isCrossfadeEnabled = appSettings.crossfadeEnabled
                         mediaSession?.setCustomLayout(buildCustomLayout())
                     }
                 }
@@ -277,9 +278,12 @@ class PlaybackService : MediaSessionService() {
                 val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                     .add(SessionCommand("ACTION_LIKE", Bundle.EMPTY))
                     .add(SessionCommand("SET_EQ_BAND", Bundle.EMPTY))
+                    .add(SessionCommand("SET_EQ_CONFIG", Bundle.EMPTY))
                     .add(SessionCommand("SET_NOTIFICATION_PREFS", Bundle.EMPTY))
                     .add(SessionCommand("SET_REPLAY_GAIN_CONFIG", Bundle.EMPTY))
                     .add(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY))
+                    .add(SessionCommand("ACTION_SKIP_NEXT", Bundle.EMPTY))
+                    .add(SessionCommand("ACTION_SKIP_PREV", Bundle.EMPTY))
                     .build()
 
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -392,10 +396,18 @@ class PlaybackService : MediaSessionService() {
                 if (player?.isPlaying == true) player.pause() else player?.play()
             }
             AvenorWidgetProvider.ACTION_NEXT -> {
-                player?.seekToNext()
+                if (::crossfadeManager.isInitialized) {
+                    crossfadeManager.manualSkip(forward = true)
+                } else {
+                    player?.seekToNext()
+                }
             }
             AvenorWidgetProvider.ACTION_PREV -> {
-                player?.seekToPrevious()
+                if (::crossfadeManager.isInitialized) {
+                    crossfadeManager.manualSkip(forward = false)
+                } else {
+                    player?.seekToPrevious()
+                }
             }
         }
         return START_STICKY
@@ -503,8 +515,25 @@ class PlaybackService : MediaSessionService() {
                     if (args.containsKey("enabled")) {
                         crossfadeManager.isCrossfadeEnabled = args.getBoolean("enabled")
                     }
+                    if (args.containsKey("durationMs")) {
+                        crossfadeManager.crossfadeDurationMs = args.getLong("durationMs")
+                    }
                 } catch (e: Exception) {
                     android.util.Log.e("PlaybackService", "Error setting crossfade config", e)
+                }
+            }
+            "ACTION_SKIP_NEXT" -> {
+                try {
+                    crossfadeManager.manualSkip(forward = true)
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaybackService", "Error executing ACTION_SKIP_NEXT", e)
+                }
+            }
+            "ACTION_SKIP_PREV" -> {
+                try {
+                    crossfadeManager.manualSkip(forward = false)
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaybackService", "Error executing ACTION_SKIP_PREV", e)
                 }
             }
             "SET_EQ_BAND" -> {

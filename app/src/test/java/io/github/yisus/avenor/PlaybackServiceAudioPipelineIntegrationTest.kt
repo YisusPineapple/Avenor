@@ -177,7 +177,7 @@ class PlaybackServiceAudioPipelineIntegrationTest {
     @Test
     fun `test 25 - CrossfadeManager remains functional and operates independently of ReplayGain`() {
         val player = ExoPlayer.Builder(context).build()
-        val crossfadeManager = CrossfadeManager(player, context)
+        val crossfadeManager = DualPlayerCrossfadeManager(player, context)
 
         assertNotNull(crossfadeManager)
         assertFalse(crossfadeManager.isCrossfadeEnabled)

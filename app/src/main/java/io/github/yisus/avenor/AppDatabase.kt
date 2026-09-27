@@ -168,7 +168,9 @@ data class AppSetting(
     val isFirstLaunch: Boolean = true,
     val nowPlayingStyle: String = "CLASSIC", // CLASSIC, EXPRESSIVE, APPLE_MUSIC
     val trashPurgeDays: Int = 30, // 7, 15, 30
-    val excludedFolders: String = ""
+    val excludedFolders: String = "",
+    val crossfadeEnabled: Boolean = false,
+    val autoMixEnabled: Boolean = false
 ) {
     fun getExcludedFoldersList(): List<String> {
         if (excludedFolders.isBlank()) return emptyList()
@@ -712,7 +714,14 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
-const val DATABASE_VERSION = 17
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `crossfadeEnabled` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `autoMixEnabled` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+const val DATABASE_VERSION = 18
 
 @Database(
     entities = [
@@ -741,7 +750,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

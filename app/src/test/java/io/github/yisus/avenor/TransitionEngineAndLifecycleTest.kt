@@ -30,7 +30,7 @@ class TransitionEngineAndLifecycleTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var player: ExoPlayer
-    private lateinit var crossfadeManager: CrossfadeManager
+    private lateinit var crossfadeManager: DualPlayerCrossfadeManager
     private lateinit var db: AppDatabase
     private lateinit var coordinator: PlaybackCoordinator
 
@@ -39,7 +39,7 @@ class TransitionEngineAndLifecycleTest {
         Dispatchers.setMain(testDispatcher)
         val context = RuntimeEnvironment.getApplication()
         player = ExoPlayer.Builder(context).build()
-        crossfadeManager = CrossfadeManager(player, context)
+        crossfadeManager = DualPlayerCrossfadeManager(player, context)
         db = androidx.room.Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()

@@ -23,13 +23,13 @@ class CrossfadePerformanceTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var player: ExoPlayer
-    private lateinit var crossfadeManager: CrossfadeManager
+    private lateinit var crossfadeManager: DualPlayerCrossfadeManager
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         player = ExoPlayer.Builder(RuntimeEnvironment.getApplication()).build()
-        crossfadeManager = CrossfadeManager(player, RuntimeEnvironment.getApplication())
+        crossfadeManager = DualPlayerCrossfadeManager(player, RuntimeEnvironment.getApplication())
     }
 
     @After

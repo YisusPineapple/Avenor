@@ -180,6 +180,11 @@ class PlayerViewModel @Inject constructor(
 
                     appSettings.value?.let { s ->
                         updateNotificationPrefs(s.showLike, s.showShuffle, s.showRepeat)
+                        val crossfadeArgs = Bundle().apply {
+                            putBoolean("enabled", s.crossfadeEnabled)
+                            putBoolean("autoMixEnabled", s.autoMixEnabled)
+                        }
+                        mc.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
                     }
                 } catch (_: Exception) {
                 }
@@ -216,13 +221,28 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun skipToNext() {
-        controller.skipToNext()
-        mediaController?.seekToNextMediaItem()
+        val mc = mediaController
+        if (mc != null) {
+            mc.sendCustomCommand(SessionCommand("ACTION_SKIP_NEXT", Bundle.EMPTY), Bundle.EMPTY)
+        } else {
+            controller.skipToNext()
+        }
     }
 
     fun skipToPrevious() {
-        controller.skipToPrevious()
-        mediaController?.seekToPreviousMediaItem()
+        val mc = mediaController
+        if (mc != null) {
+            mc.sendCustomCommand(SessionCommand("ACTION_SKIP_PREV", Bundle.EMPTY), Bundle.EMPTY)
+        } else {
+            controller.skipToPrevious()
+        }
+    }
+
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        val args = Bundle().apply {
+            putBoolean("enabled", enabled)
+        }
+        mediaController?.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), args)
     }
 
     fun seekTo(positionMs: Long) {
@@ -441,6 +461,11 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             dbRepo.saveSettings(setting)
             updateNotificationPrefs(setting.showLike, setting.showShuffle, setting.showRepeat)
+            val crossfadeArgs = Bundle().apply {
+                putBoolean("enabled", setting.crossfadeEnabled)
+                putBoolean("autoMixEnabled", setting.autoMixEnabled)
+            }
+            mediaController?.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
             if (setting.autoEq) {
                 val mediaItem = mediaController?.currentMediaItem
                 val genre = mediaItem?.mediaMetadata?.genre?.toString() ?: ""
