@@ -64,10 +64,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
-import coil.compose.AsyncImage
 import io.github.yisus.avenor.ResponsiveGridManager
 import io.github.yisus.avenor.SongSortOrder
 import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
+import io.github.yisus.avenor.ui.components.AvenorAsyncImage
 import io.github.yisus.avenor.ui.components.RenameDialog
 import io.github.yisus.avenor.ui.navigation.Screen
 
@@ -93,6 +93,7 @@ fun LibraryScreen(
     val dailyMix by viewModel.dailyMix.collectAsState()
     val favoriteSongs by viewModel.favoriteSongs.collectAsState()
     val favoriteSongIds by viewModel.favoriteSongIds.collectAsState()
+    val appSettings by viewModel.appSettings.collectAsState()
 
     var showPlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
@@ -253,9 +254,9 @@ fun LibraryScreen(
                                     )
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
-                                        AsyncImage(
+                                        AvenorAsyncImage(
                                             model = mixSong.albumArtUri,
-                                            contentDescription = null,
+                                            resolution = appSettings?.albumArtResolution ?: "HIGH",
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -328,9 +329,9 @@ fun LibraryScreen(
                                             )
                                         ) {
                                             Column(modifier = Modifier.padding(12.dp)) {
-                                                AsyncImage(
+                                                AvenorAsyncImage(
                                                     model = favSong.albumArtUri,
-                                                    contentDescription = null,
+                                                    resolution = appSettings?.albumArtResolution ?: "HIGH",
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -364,9 +365,9 @@ fun LibraryScreen(
                                             )
                                         ) {
                                             Column(modifier = Modifier.padding(12.dp)) {
-                                                AsyncImage(
+                                                AvenorAsyncImage(
                                                     model = histItem.albumArtUri,
-                                                    contentDescription = null,
+                                                    resolution = appSettings?.albumArtResolution ?: "HIGH",
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -453,9 +454,9 @@ fun LibraryScreen(
                         ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small)) {
-                                    AsyncImage(
+                                    AvenorAsyncImage(
                                         model = song.albumArtUri,
-                                        contentDescription = null,
+                                        resolution = appSettings?.albumArtResolution ?: "HIGH",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )

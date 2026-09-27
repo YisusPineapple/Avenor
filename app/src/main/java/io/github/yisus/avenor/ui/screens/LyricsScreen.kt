@@ -3,6 +3,8 @@ package io.github.yisus.avenor.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LyricsScreen(
     playerViewModel: PlayerViewModel = hiltViewModel()
@@ -50,9 +53,11 @@ fun LyricsScreen(
         currentSong?.let { playerViewModel.loadLyricsForSong(it, context) }
     }
 
-    val activeIndex = remember(lyrics, currentPosition, lyricsOffset) {
+    val effectivePosition = currentPosition - lyricsOffset
+
+    val activeIndex = remember(lyrics, effectivePosition) {
         if (lyrics.isEmpty()) -1
-        else lyrics.indexOfLast { it.timeMs <= (currentPosition - lyricsOffset) }.coerceAtLeast(0)
+        else lyrics.indexOfLast { it.timeMs <= effectivePosition }.coerceAtLeast(0)
     }
 
     LaunchedEffect(activeIndex, isPlaying) {
@@ -103,24 +108,55 @@ fun LyricsScreen(
                 }
             }
         } else {
+            val activeColor = MaterialTheme.colorScheme.primary
+            val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+            val activeStyle = MaterialTheme.typography.headlineMedium
+            val inactiveStyle = MaterialTheme.typography.titleMedium
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
                 contentPadding = PaddingValues(vertical = 64.dp)
             ) {
-                itemsIndexed(lyrics) { index, line ->
+                itemsIndexed(
+                    items = lyrics,
+                    key = { index, line -> "${index}_${line.timeMs}" }
+                ) { index, line ->
                     val isActive = index == activeIndex
-                    Text(
-                        text = line.text,
-                        style = if (isActive) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        modifier = Modifier
-                            .padding(vertical = 12.dp)
-                            .clickable { playerViewModel.seekTo(line.timeMs) }
-                    )
+                    val lineStyle = if (isActive) activeStyle else inactiveStyle
+                    val lineWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+
+                    if (line.syllables.isNotEmpty()) {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp)
+                                .clickable { playerViewModel.seekTo(line.timeMs) }
+                        ) {
+                            line.syllables.forEach { syllable ->
+                                val isSyllablePassed = currentPosition >= syllable.timeMs
+                                Text(
+                                    text = syllable.text,
+                                    style = lineStyle,
+                                    fontWeight = lineWeight,
+                                    color = if (isSyllablePassed) activeColor else inactiveColor
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = line.text,
+                            style = lineStyle,
+                            fontWeight = lineWeight,
+                            color = if (isActive) activeColor else inactiveColor,
+                            modifier = Modifier
+                                .padding(vertical = 12.dp)
+                                .clickable { playerViewModel.seekTo(line.timeMs) }
+                        )
+                    }
                 }
             }
         }
     }
 }
+

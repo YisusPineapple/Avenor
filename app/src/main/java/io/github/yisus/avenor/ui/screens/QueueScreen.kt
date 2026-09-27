@@ -39,14 +39,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
+import io.github.yisus.avenor.ui.components.AvenorAsyncImage
 
 @Composable
 fun QueueScreen(viewModel: PlayerViewModel) {
     val queue by viewModel.queue.collectAsState()
     val currentSong by viewModel.currentSong.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
+    val appSettings by viewModel.appSettings.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         if (queue.isEmpty()) {
@@ -71,9 +72,9 @@ fun QueueScreen(viewModel: PlayerViewModel) {
                     ) {
                         Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.small)) {
-                                AsyncImage(
+                                AvenorAsyncImage(
                                     model = song.albumArtUri,
-                                    contentDescription = null,
+                                    resolution = appSettings?.albumArtResolution ?: "HIGH",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )

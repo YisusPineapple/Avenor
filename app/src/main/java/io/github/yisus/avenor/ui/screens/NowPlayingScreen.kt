@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +37,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,9 +70,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
-import coil.compose.AsyncImage
 import io.github.yisus.avenor.AutoMixState
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
+import io.github.yisus.avenor.metadata.CreditSplitter
+import io.github.yisus.avenor.ui.components.AvenorAsyncImage
 import io.github.yisus.avenor.util.formatMs
 import kotlinx.coroutines.delay
 
@@ -134,9 +139,9 @@ fun NowPlayingScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         // Background for Apple Music style
         if (style == "APPLE_MUSIC") {
-            AsyncImage(
+            AvenorAsyncImage(
                 model = currentSong?.albumArtUri,
-                contentDescription = null,
+                resolution = appSettings?.albumArtResolution ?: "HIGH",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().alpha(0.3f),
                 colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.5f), BlendMode.Darken)
@@ -166,11 +171,12 @@ fun NowPlayingScreen(
                 shape = artShape,
                 elevation = CardDefaults.cardElevation(defaultElevation = if (style == "APPLE_MUSIC") 24.dp else 16.dp)
             ) {
-                AsyncImage(
+                AvenorAsyncImage(
                     model = currentSong?.albumArtUri,
-                    contentDescription = "Album Art",
+                    resolution = appSettings?.albumArtResolution ?: "HIGH",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = "Album Art"
                 )
             }
 
@@ -199,7 +205,34 @@ fun NowPlayingScreen(
                         }
                     }
                     Text(currentSong?.title ?: "Unknown Title", style = if(style == "APPLE_MUSIC") MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text(currentSong?.artist ?: "Unknown Artist", style = MaterialTheme.typography.titleMedium, color = if(style == "APPLE_MUSIC") MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary, maxLines = 1)
+                    val artists = remember(currentSong?.artist) {
+                        CreditSplitter.splitArtists(currentSong?.artist ?: "").ifEmpty { listOf("Unknown Artist") }
+                    }
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(artists) { artistName ->
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        text = artistName,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 1
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    labelColor = if (style == "APPLE_MUSIC") {
+                                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                            )
+                        }
+                    }
                 }
                 IconButton(onClick = { currentSong?.let { viewModel.toggleFavorite(it.id) } }) {
                     Icon(
