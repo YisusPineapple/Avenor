@@ -198,11 +198,11 @@ class DomainContractsAndFileSourceTest {
 
         val wavpackRes = DefaultDecoderResolver.resolve(AudioContainerType.WAVPACK, AudioCodecType.WAVPACK, 96000, 2, 24)
         assertTrue(wavpackRes is DecoderResolution.SoftwareDecoder)
-        assertFalse((wavpackRes as DecoderResolution.SoftwareDecoder).isBackendInstalled)
-        assertEquals(DecoderAvailabilityStatus.PLANNED_BACKEND, wavpackRes.availabilityStatus)
-        assertFalse(wavpackRes.isSupportedNow)
+        assertTrue((wavpackRes as DecoderResolution.SoftwareDecoder).isBackendInstalled)
+        assertEquals(DecoderAvailabilityStatus.SUPPORTED_NOW, wavpackRes.availabilityStatus)
+        assertTrue(wavpackRes.isSupportedNow)
 
-        // Productive resolution rejects PLANNED_BACKEND codecs whose native libraries are not bundled
+        // Productive resolution accepts SUPPORTED_NOW software backends (LIBWAVPACK, LIBALAC, LIBMAC_APE)
         val wavpackProductive = DefaultDecoderResolver.resolveProductive(
             AudioContainerType.WAVPACK,
             AudioCodecType.WAVPACK,
@@ -210,8 +210,8 @@ class DomainContractsAndFileSourceTest {
             2,
             24
         )
-        assertTrue(wavpackProductive is DecoderResolution.Unsupported)
-        assertEquals(DecoderAvailabilityStatus.UNSUPPORTED, wavpackProductive.availabilityStatus)
+        assertTrue(wavpackProductive is DecoderResolution.SoftwareDecoder)
+        assertEquals(DecoderAvailabilityStatus.SUPPORTED_NOW, wavpackProductive.availabilityStatus)
 
         val pcmRes = DefaultDecoderResolver.resolve(AudioContainerType.WAV, AudioCodecType.PCM_S16LE, 44100, 2, 16)
         assertEquals(DecoderResolution.PassthroughPcm(C.ENCODING_PCM_16BIT), pcmRes)

@@ -7,6 +7,7 @@ import android.os.Handler
 import androidx.annotation.OptIn
 import androidx.media3.common.DataReader
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.UnstableApi
@@ -258,6 +259,9 @@ class AvenorRenderersFactory(
     val safeLimiterAudioProcessor: SafeLimiterAudioProcessor = SafeLimiterAudioProcessor()
 ) : DefaultRenderersFactory(context) {
 
+    @Volatile
+    var bitPerfectPassthroughEnabled: Boolean = false
+
     /**
      * Ordered DSP processor array exposed for pipeline inspection and verification.
      */
@@ -301,7 +305,28 @@ class AvenorRenderersFactory(
             .setAudioProcessors(audioProcessors)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-            .setAudioOffloadSupportProvider { _, _ -> AudioOffloadSupport.DEFAULT_UNSUPPORTED }
+            .setAudioOffloadSupportProvider { format, _ ->
+                val isPassthroughMime = when (format.sampleMimeType) {
+                    MimeTypes.AUDIO_E_AC3,
+                    MimeTypes.AUDIO_E_AC3_JOC,
+                    MimeTypes.AUDIO_AC3,
+                    MimeTypes.AUDIO_AC4,
+                    MimeTypes.AUDIO_DTS,
+                    MimeTypes.AUDIO_DTS_HD,
+                    MimeTypes.AUDIO_DTS_EXPRESS,
+                    MimeTypes.AUDIO_TRUEHD -> true
+                    else -> false
+                }
+                if (bitPerfectPassthroughEnabled && isPassthroughMime) {
+                    AudioOffloadSupport.Builder()
+                        .setIsFormatSupported(true)
+                        .setIsGaplessSupported(true)
+                        .setIsSpeedChangeSupported(false)
+                        .build()
+                } else {
+                    AudioOffloadSupport.DEFAULT_UNSUPPORTED
+                }
+            }
             .build()
         return AvenorAudioSink(defaultSink, universalDownmixAudioProcessor)
     }

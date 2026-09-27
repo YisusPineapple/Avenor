@@ -152,6 +152,41 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("Densidad de Interfaz", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "El modo Profesional muestra medidores VU, bitrate, sample rate y profundidad de bits en tiempo real.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            val densityOptions = listOf(
+                                "RELAXED" to "Relajada (Minimalista)",
+                                "PRO" to "Profesional (Técnica)"
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                densityOptions.forEach { (key, label) ->
+                                    FilterChip(
+                                        selected = settings.uiDensity == key,
+                                        onClick = { viewModel.saveSettings(settings.copy(uiDensity = key)) },
+                                        label = { Text(label) },
+                                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -220,6 +255,40 @@ fun SettingsScreen(
                         Switch(
                             checked = settings.autoMixEnabled,
                             onCheckedChange = { viewModel.saveSettings(settings.copy(autoMixEnabled = it)) }
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        item {
+            Text("Motor de Audio Audiófilo", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Passthrough Bit-perfect (Atmos/DTS)")
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Envía el audio crudo al DAC/Receptor. Desactiva el Ecualizador y ReplayGain para formatos compatibles.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = settings.bitPerfectPassthrough,
+                            onCheckedChange = { viewModel.saveSettings(settings.copy(bitPerfectPassthrough = it)) }
                         )
                     }
                 }

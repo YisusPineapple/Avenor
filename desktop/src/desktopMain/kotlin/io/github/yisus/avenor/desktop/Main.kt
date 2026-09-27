@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,36 +15,74 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.yisus.avenor.shared.NowPlayingState
+import io.github.yisus.avenor.shared.playback.PlaybackState
 
 /**
  * Desktop entry point for Avenor Music Player.
  * Provides a responsive, desktop-optimized layout supporting local library,
- * queue management, and hardware DSP indicators.
+ * queue management, and hardware DSP indicators connected to VLCJ via DesktopPlaybackController.
  */
 fun main() = application {
     val windowState = rememberWindowState(width = 1100.dp, height = 750.dp)
+    val controller = remember { DesktopPlaybackController() }
+
+    DisposableEffect(controller) {
+        onDispose {
+            controller.release()
+        }
+    }
+
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = {
+            controller.release()
+            exitApplication()
+        },
         title = "Avenor - Local Audiophile Music Player",
         state = windowState
     ) {
-        AvenorDesktopApp()
+        AvenorDesktopApp(controller = controller)
     }
 }
 
 @Composable
-fun AvenorDesktopApp() {
+fun AvenorDesktopApp(
+    controller: DesktopPlaybackController = remember { DesktopPlaybackController() }
+) {
+    DisposableEffect(controller) {
+        onDispose {
+            controller.release()
+        }
+    }
+
     var currentScreen by remember { mutableStateOf("library") }
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(45f) }
     var volume by remember { mutableStateOf(0.8f) }
+
+    val playbackState by controller.playbackState.collectAsState()
+    val currentMediaItem by controller.currentMediaItem.collectAsState()
+    val currentPositionMs by controller.currentPositionFlow.collectAsState()
+    val durationMs by controller.durationFlow.collectAsState()
+
+    val isPlaying = playbackState is PlaybackState.Playing
     val isCrossfading by NowPlayingState.isCrossfading.collectAsState()
     val isDspActive by NowPlayingState.isDspActive.collectAsState()
+
+    val statusSubtitle = when (val state = playbackState) {
+        is PlaybackState.Playing -> currentMediaItem?.artist ?: "Playing • VLCJ Native Engine"
+        is PlaybackState.Paused -> currentMediaItem?.artist ?: "Paused • Offline-First"
+        is PlaybackState.Buffering -> "Buffering stream..."
+        is PlaybackState.Error -> state.message
+        is PlaybackState.Idle -> currentMediaItem?.artist ?: "Ready • Offline-First"
+    }
+
+    val sliderMaxMs = remember(durationMs, currentPositionMs) {
+        maxOf(durationMs, currentPositionMs, 180_000L).toFloat()
+    }
 
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -77,7 +118,7 @@ fun AvenorDesktopApp() {
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Audiophile Engine",
+                            text = if (isDspActive) "Audiophile Engine • DSP" else "Audiophile Engine",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -86,8 +127,8 @@ fun AvenorDesktopApp() {
                         val navItems = listOf(
                             Triple("library", "Library", Icons.Default.LibraryMusic),
                             Triple("favorites", "Favorites", Icons.Default.Favorite),
-                            Triple("playlists", "Playlists", Icons.Default.PlaylistPlay),
-                            Triple("queue", "Queue", Icons.Default.QueueMusic),
+                            Triple("playlists", "Playlists", Icons.AutoMirrored.Filled.PlaylistPlay),
+                            Triple("queue", "Queue", Icons.AutoMirrored.Filled.QueueMusic),
                             Triple("lyrics", "Lyrics", Icons.Default.Lyrics),
                             Triple("equalizer", "Equalizer", Icons.Default.GraphicEq),
                             Triple("settings", "Settings", Icons.Default.Settings)
@@ -112,7 +153,7 @@ fun AvenorDesktopApp() {
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp)
                     ) {
                         when (currentScreen) {
-                            "library" -> DesktopLibraryView()
+                            "library" -> DesktopLibraryView(controller = controller)
                             "favorites" -> DesktopFavoritesView()
                             "playlists" -> DesktopPlaylistsView()
                             "queue" -> DesktopQueueView()
@@ -142,15 +183,23 @@ fun AvenorDesktopApp() {
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.width(220.dp)) {
                                 Text(
-                                    text = "Local Audio Stream",
+                                    text = currentMediaItem?.title ?: "Local Audio Stream",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "Ready • Offline-First",
+                                    text = statusSubtitle,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (playbackState is PlaybackState.Error) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 if (isCrossfading) {
                                     Text(
@@ -173,11 +222,17 @@ fun AvenorDesktopApp() {
                                     IconButton(onClick = {}) {
                                         Icon(Icons.Default.Shuffle, contentDescription = "Shuffle", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    IconButton(onClick = {}) {
+                                    IconButton(onClick = { controller.skipToPrevious() }) {
                                         Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
                                     }
                                     FilledIconButton(
-                                        onClick = { isPlaying = !isPlaying },
+                                        onClick = {
+                                            if (isPlaying) {
+                                                controller.pause()
+                                            } else {
+                                                controller.play()
+                                            }
+                                        },
                                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
                                     ) {
                                         Icon(
@@ -186,7 +241,7 @@ fun AvenorDesktopApp() {
                                             tint = MaterialTheme.colorScheme.onPrimary
                                         )
                                     }
-                                    IconButton(onClick = {}) {
+                                    IconButton(onClick = { controller.skipToNext() }) {
                                         Icon(Icons.Default.SkipNext, contentDescription = "Next")
                                     }
                                     IconButton(onClick = {}) {
@@ -194,9 +249,11 @@ fun AvenorDesktopApp() {
                                     }
                                 }
                                 Slider(
-                                    value = currentPosition,
-                                    onValueChange = { currentPosition = it },
-                                    valueRange = 0f..100f,
+                                    value = currentPositionMs.toFloat().coerceIn(0f, sliderMaxMs),
+                                    onValueChange = { newPosition ->
+                                        controller.seekTo(newPosition.toLong())
+                                    },
+                                    valueRange = 0f..sliderMaxMs,
                                     modifier = Modifier.fillMaxWidth().height(20.dp)
                                 )
                             }
@@ -207,11 +264,14 @@ fun AvenorDesktopApp() {
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.width(180.dp)
                             ) {
-                                Icon(Icons.Default.VolumeUp, contentDescription = "Volume", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Volume", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Slider(
                                     value = volume,
-                                    onValueChange = { volume = it },
+                                    onValueChange = {
+                                        volume = it
+                                        controller.setVolume(it)
+                                    },
                                     valueRange = 0f..1f,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -225,7 +285,17 @@ fun AvenorDesktopApp() {
 }
 
 @Composable
-fun DesktopLibraryView() {
+fun DesktopLibraryView(controller: DesktopPlaybackController) {
+    val defaultTestPath = remember {
+        val osName = System.getProperty("os.name").orEmpty().lowercase()
+        if (osName.contains("win")) {
+            "C:/ruta/a/tu/musica.mp3"
+        } else {
+            "/home/user/musica.mp3"
+        }
+    }
+    var testFilePath by remember { mutableStateOf(defaultTestPath) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Local Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("Scan local directories to populate music files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -234,11 +304,38 @@ fun DesktopLibraryView() {
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Select Music Folder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("Supports MP3, FLAC, WAV, OGG, OPUS, M4A", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                OutlinedTextField(
+                    value = testFilePath,
+                    onValueChange = { testFilePath = it },
+                    label = { Text("Local Test Audio File Path") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(0.7f)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = { controller.playTestFile(testFilePath) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Test Audio")
+                }
             }
         }
     }

@@ -16,6 +16,8 @@ class DatabaseRepository(val dao: MusicDao) {
     val allPlaylists: Flow<List<Playlist>> = dao.getAllPlaylists()
     val recentHistory: Flow<List<Song>> = dao.getRecentHistory()
     val dailyMix: Flow<List<Song>> = dao.getDailyMix()
+    val forgottenGems: Flow<List<Song>> = dao.getForgottenGems()
+    val heavyRotation: Flow<List<Song>> = dao.getHeavyRotation()
     val eqPresets: Flow<List<EqPreset>> = dao.getAllEqPresets()
     val appSettings: Flow<AppSetting?> = dao.getSettings()
     val topSongs: Flow<List<Song>> = dao.getTopSongs()

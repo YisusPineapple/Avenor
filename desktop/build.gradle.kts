@@ -14,7 +14,10 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                implementation(compose.material3)
+                implementation(compose.materialIconsExtended)
                 implementation(project(":shared"))
+                implementation("uk.co.caprica:vlcj:4.8.2")
             }
         }
     }

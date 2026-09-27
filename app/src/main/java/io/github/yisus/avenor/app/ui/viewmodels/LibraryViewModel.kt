@@ -19,6 +19,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.yisus.avenor.AppDatabase
 import io.github.yisus.avenor.AppSetting
 import io.github.yisus.avenor.AudioRepository
+import io.github.yisus.avenor.CodecCount
 import io.github.yisus.avenor.DatabaseRepository
 import io.github.yisus.avenor.PlaybackService
 import io.github.yisus.avenor.Playlist
@@ -72,11 +73,14 @@ class LibraryViewModel @Inject constructor(
     val history: StateFlow<List<Song>> = dbRepo.recentHistory.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val playlists: StateFlow<List<Playlist>> = dbRepo.allPlaylists.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val dailyMix: StateFlow<List<Song>> = dbRepo.dailyMix.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val forgottenGems: StateFlow<List<Song>> = dbRepo.dao.getForgottenGems().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val heavyRotation: StateFlow<List<Song>> = dbRepo.dao.getHeavyRotation().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val favoriteSongs: StateFlow<List<Song>> = dbRepo.favoriteSongs.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val favoriteSongIds: StateFlow<List<Long>> = dbRepo.favoriteSongIds.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val topSongs: StateFlow<List<Song>> = dbRepo.topSongs.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val topArtist: StateFlow<TopArtistResult?> = dbRepo.topArtist.stateIn(viewModelScope, SharingStarted.Lazily, null)
     val totalListeningTimeMs: StateFlow<Long?> = dbRepo.totalListeningTimeMs.stateIn(viewModelScope, SharingStarted.Lazily, null)
+    val codecDistribution: StateFlow<List<CodecCount>> = dbRepo.dao.getCodecDistribution().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val appSettings: StateFlow<AppSetting?> = dbRepo.appSettings.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     private val _searchQuery = MutableStateFlow("")

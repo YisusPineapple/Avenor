@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
@@ -40,6 +41,7 @@ import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 import io.github.yisus.avenor.startMemoryWatchdog
 import io.github.yisus.avenor.ui.components.AuroraBackground
+import io.github.yisus.avenor.ui.screens.AnalyticsScreen
 import io.github.yisus.avenor.ui.screens.EqScreen
 import io.github.yisus.avenor.ui.screens.LyricsScreen
 import io.github.yisus.avenor.ui.screens.NowPlayingScreen
@@ -109,6 +111,7 @@ fun AvenorAppRoot(
                                     is Screen.Lyrics -> "Lyrics"
                                     is Screen.Queue -> "Play Queue"
                                     is Screen.Recap -> "Your Recap"
+                                    is Screen.Analytics -> "Analytics"
                                     is Screen.PlaylistDetails -> s.playlistName
                                     else -> "Avenor"
                                 },
@@ -124,6 +127,11 @@ fun AvenorAppRoot(
                             }
                         },
                         actions = {
+                            if (currentScreen == Screen.Library) {
+                                IconButton(onClick = { currentScreen = Screen.Analytics }) {
+                                    Icon(Icons.Default.BarChart, contentDescription = "Analytics")
+                                }
+                            }
                             if (currentScreen == Screen.Library || currentScreen == Screen.NowPlaying) {
                                 IconButton(onClick = { currentScreen = Screen.Settings }) {
                                     Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -167,6 +175,7 @@ fun AvenorAppRoot(
                         is Screen.Lyrics -> LyricsScreen(playerViewModel)
                         is Screen.Queue -> QueueScreen(playerViewModel)
                         is Screen.Recap -> RecapScreen(libraryViewModel)
+                        is Screen.Analytics -> AnalyticsScreen(libraryViewModel)
                         is Screen.PlaylistDetails -> PlaylistDetailsScreen(libraryViewModel, screen.playlistId)
                     }
                 }

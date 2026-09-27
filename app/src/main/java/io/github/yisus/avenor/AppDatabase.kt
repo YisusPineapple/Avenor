@@ -170,7 +170,9 @@ data class AppSetting(
     val trashPurgeDays: Int = 30, // 7, 15, 30
     val excludedFolders: String = "",
     val crossfadeEnabled: Boolean = false,
-    val autoMixEnabled: Boolean = false
+    val autoMixEnabled: Boolean = false,
+    val bitPerfectPassthrough: Boolean = false,
+    val uiDensity: String = "RELAXED"
 ) {
     fun getExcludedFoldersList(): List<String> {
         if (excludedFolders.isBlank()) return emptyList()
@@ -528,6 +530,33 @@ fun getRecentHistory(limit: Int = 20): Flow<List<Song>>
 @Query("SELECT * FROM (SELECT songs.*, 1 as priority FROM songs WHERE artist IN (SELECT s.artist FROM songs s JOIN listening_history h ON s.id = h.songId GROUP BY s.artist ORDER BY COUNT(h.id) DESC LIMIT 5) UNION SELECT songs.*, 2 as priority FROM songs) WHERE isExcludedFromLibrary = 0 GROUP BY id ORDER BY priority ASC, RANDOM() LIMIT 15")
 fun getDailyMix(): Flow<List<Song>>
 
+@Query("""
+    SELECT songs.* FROM songs
+    INNER JOIN listening_history h ON songs.id = h.songId
+    WHERE songs.isExcludedFromLibrary = 0
+    GROUP BY songs.id
+    HAVING COUNT(h.id) > 5 AND MAX(h.playedAt) < :thirtyDaysAgoMs
+    ORDER BY COUNT(h.id) DESC, MAX(h.playedAt) ASC
+    LIMIT :limit
+""")
+fun getForgottenGems(
+    limit: Int = 10,
+    thirtyDaysAgoMs: Long = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+): Flow<List<Song>>
+
+@Query("""
+    SELECT songs.* FROM songs
+    INNER JOIN listening_history h ON songs.id = h.songId
+    WHERE songs.isExcludedFromLibrary = 0 AND h.playedAt >= :sevenDaysAgoMs
+    GROUP BY songs.id
+    ORDER BY COUNT(h.id) DESC, MAX(h.playedAt) DESC
+    LIMIT :limit
+""")
+fun getHeavyRotation(
+    limit: Int = 10,
+    sevenDaysAgoMs: Long = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+): Flow<List<Song>>
+
 @Insert(onConflict = OnConflictStrategy.REPLACE)
 suspend fun insertEqPreset(preset: EqPreset)
 
@@ -549,6 +578,10 @@ suspend fun saveSettings(setting: AppSetting)
     
     @Query("SELECT SUM(songs.durationMs) FROM songs INNER JOIN listening_history h ON songs.id = h.songId")
     fun getTotalListeningTimeMs(): Flow<Long?>
+
+    @Query("SELECT codec, COUNT(id) as count FROM songs WHERE isExcludedFromLibrary = 0 GROUP BY codec ORDER BY count DESC")
+    fun getCodecDistribution(): Flow<List<CodecCount>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveLyricOffset(state: LyricOffset)
     
@@ -613,6 +646,9 @@ suspend fun saveSettings(setting: AppSetting)
 
 @Serializable
 data class TopArtistResult(val artist: String, val playCount: Int)
+
+@Serializable
+data class CodecCount(val codec: String, val count: Int)
 
 val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { } }
 val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) { } }
@@ -721,7 +757,19 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
-const val DATABASE_VERSION = 18
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `bitPerfectPassthrough` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `app_settings` ADD COLUMN `uiDensity` TEXT NOT NULL DEFAULT 'RELAXED'")
+    }
+}
+
+const val DATABASE_VERSION = 20
 
 @Database(
     entities = [
@@ -750,7 +798,21 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "avenor_database")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14,
+                        MIGRATION_14_15,
+                        MIGRATION_15_16,
+                        MIGRATION_16_17,
+                        MIGRATION_17_18,
+                        MIGRATION_18_19,
+                        MIGRATION_19_20
+                    )
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

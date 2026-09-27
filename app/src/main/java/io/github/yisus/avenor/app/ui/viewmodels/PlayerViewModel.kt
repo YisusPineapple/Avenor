@@ -185,6 +185,11 @@ class PlayerViewModel @Inject constructor(
                             putBoolean("autoMixEnabled", s.autoMixEnabled)
                         }
                         mc.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
+
+                        val passthroughArgs = Bundle().apply {
+                            putBoolean("bitPerfectPassthrough", s.bitPerfectPassthrough)
+                        }
+                        mc.sendCustomCommand(SessionCommand("SET_PASSTHROUGH_CONFIG", Bundle.EMPTY), passthroughArgs)
                     }
                 } catch (_: Exception) {
                 }
@@ -466,6 +471,10 @@ class PlayerViewModel @Inject constructor(
                 putBoolean("autoMixEnabled", setting.autoMixEnabled)
             }
             mediaController?.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
+            val passthroughArgs = Bundle().apply {
+                putBoolean("bitPerfectPassthrough", setting.bitPerfectPassthrough)
+            }
+            mediaController?.sendCustomCommand(SessionCommand("SET_PASSTHROUGH_CONFIG", Bundle.EMPTY), passthroughArgs)
             if (setting.autoEq) {
                 val mediaItem = mediaController?.currentMediaItem
                 val genre = mediaItem?.mediaMetadata?.genre?.toString() ?: ""

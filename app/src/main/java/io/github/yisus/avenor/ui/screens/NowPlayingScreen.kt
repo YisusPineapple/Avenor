@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,18 +65,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import io.github.yisus.avenor.AutoMixState
+import io.github.yisus.avenor.Song
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 import io.github.yisus.avenor.metadata.CreditSplitter
 import io.github.yisus.avenor.ui.components.AvenorAsyncImage
 import io.github.yisus.avenor.util.formatMs
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.random.Random
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +146,7 @@ fun NowPlayingScreen(
     }
 
     val style = appSettings?.nowPlayingStyle ?: "CLASSIC"
+    val uiDensity = appSettings?.uiDensity ?: "RELAXED"
     
     Box(modifier = Modifier.fillMaxSize()) {
         // Background for Apple Music style
@@ -244,6 +256,14 @@ fun NowPlayingScreen(
                 }
             }
 
+            if (uiDensity == "PRO") {
+                TechnicalSpecsPanel(
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                    currentPosition = currentPosition
+                )
+            }
+
             // Progress
             Column {
                 val progress = if (currentSong?.durationMs != null && currentSong!!.durationMs > 0) { currentPosition.toFloat() / currentSong!!.durationMs.toFloat() } else 0f
@@ -298,6 +318,148 @@ fun NowPlayingScreen(
                 IconButton(onClick = { showSleepTimerDialog = true }) { Icon(Icons.Default.Timer, contentDescription = "Sleep Timer", tint = if (isSleepTimerActive) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
                 IconButton(onClick = { onNavigateToEq() }) { Icon(Icons.Default.Equalizer, contentDescription = "EQ") }
             }
+        }
+    }
+}
+
+@Composable
+fun TechnicalSpecsPanel(
+    currentSong: Song?,
+    isPlaying: Boolean,
+    currentPosition: Long
+) {
+    val codecText = remember(currentSong?.codec) {
+        currentSong?.codec?.uppercase(Locale.US)?.takeIf { it.isNotBlank() } ?: "FLAC"
+    }
+    val bitrateText = remember(currentSong?.bitrate) {
+        val rawBitrate = currentSong?.bitrate ?: 0L
+        val kbps = when {
+            rawBitrate >= 1000L -> rawBitrate / 1000L
+            rawBitrate > 0L -> rawBitrate
+            else -> 1411L
+        }
+        "$kbps kbps"
+    }
+    val sampleRateText = remember(currentSong?.sampleRate) {
+        val sr = currentSong?.sampleRate?.takeIf { it > 0 } ?: 44100
+        String.format(Locale.US, "%.1f kHz", sr / 1000.0)
+    }
+    val bitDepthText = remember(currentSong?.bitDepth) {
+        val bd = currentSong?.bitDepth?.takeIf { it > 0 } ?: 16
+        "${bd}-bit"
+    }
+
+    val trackBackgroundColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f)
+    val leftChannelColor = MaterialTheme.colorScheme.primary
+    val rightChannelColor = MaterialTheme.colorScheme.secondary
+    val peakColor = MaterialTheme.colorScheme.tertiary
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Fila 1 (Datos): Codec, Bitrate, Sample Rate y Bit Depth
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = codecText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = bitrateText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = sampleRateText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = bitDepthText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Fila 2 (Vúmetro Ligero): Zero-Allocations en onDrawBehind
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .drawWithCache {
+                        val barCornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                        val gapPx = 4.dp.toPx()
+                        val channelHeight = (size.height - gapPx) / 2f
+                        val fullTrackSize = Size(size.width, channelHeight)
+                        val rightTopLeft = Offset(0f, channelHeight + gapPx)
+
+                        onDrawBehind {
+                            val leftLevel: Float
+                            val rightLevel: Float
+                            if (isPlaying) {
+                                val baseWave = abs(Math.sin(currentPosition * 0.01)).toFloat()
+                                val jitterL = Random.nextFloat() * 0.25f
+                                val jitterR = Random.nextFloat() * 0.25f
+                                leftLevel = (baseWave * 0.72f + jitterL).coerceIn(0.05f, 1f)
+                                rightLevel = (abs(Math.sin(currentPosition * 0.01 + 0.6)).toFloat() * 0.72f + jitterR).coerceIn(0.05f, 1f)
+                            } else {
+                                leftLevel = 0f
+                                rightLevel = 0f
+                            }
+
+                            // Pistas de fondo (L y R)
+                            drawRoundRect(
+                                color = trackBackgroundColor,
+                                topLeft = Offset.Zero,
+                                size = fullTrackSize,
+                                cornerRadius = barCornerRadius
+                            )
+                            drawRoundRect(
+                                color = trackBackgroundColor,
+                                topLeft = rightTopLeft,
+                                size = fullTrackSize,
+                                cornerRadius = barCornerRadius
+                            )
+
+                            // Barras activas del Vúmetro estéreo (solo cuando > 0f)
+                            if (leftLevel > 0f) {
+                                drawRoundRect(
+                                    color = if (leftLevel > 0.88f) peakColor else leftChannelColor,
+                                    topLeft = Offset.Zero,
+                                    size = Size(size.width * leftLevel, channelHeight),
+                                    cornerRadius = barCornerRadius
+                                )
+                            }
+                            if (rightLevel > 0f) {
+                                drawRoundRect(
+                                    color = if (rightLevel > 0.88f) peakColor else rightChannelColor,
+                                    topLeft = rightTopLeft,
+                                    size = Size(size.width * rightLevel, channelHeight),
+                                    cornerRadius = barCornerRadius
+                                )
+                            }
+                        }
+                    }
+            ) {}
         }
     }
 }

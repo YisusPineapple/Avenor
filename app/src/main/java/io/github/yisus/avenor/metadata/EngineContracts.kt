@@ -279,10 +279,10 @@ enum class DecoderAvailabilityStatus {
  * requiring unbundled backends so playback never assumes a non-existent decoder is installed.
  */
 enum class SoftwareBackendType(val isAvailableInBuild: Boolean = false) {
-    LIBALAC(isAvailableInBuild = false),
+    LIBALAC(isAvailableInBuild = true),
     LIBAVCODEC_MINIMAL(isAvailableInBuild = false),
-    LIBWAVPACK(isAvailableInBuild = false),
-    LIBMAC_APE(isAvailableInBuild = false),
+    LIBWAVPACK(isAvailableInBuild = true),
+    LIBMAC_APE(isAvailableInBuild = true),
     DSD_TO_PCM_CONVERTER(isAvailableInBuild = false)
 }
 

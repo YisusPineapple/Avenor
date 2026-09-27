@@ -9,5 +9,6 @@ sealed class Screen {
     object Lyrics : Screen()
     object Queue : Screen()
     object Recap : Screen()
+    object Analytics : Screen()
     data class PlaylistDetails(val playlistId: Int, val playlistName: String) : Screen()
 }

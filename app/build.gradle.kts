@@ -87,6 +87,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.2.1")
     implementation("androidx.media3:media3-session:1.2.1")
     implementation("androidx.media3:media3-ui:1.2.1")
+    // Para habilitar decodificadores audiófilos vía FFmpeg (ALAC, APE, WavPack, TrueHD, DTS, E-AC3):
+    // 1. Ejecuta el workflow manual "Build Media3 FFmpeg Extension" en GitHub Actions.
+    // 2. Descarga el artefacto `media3-ffmpeg-extension` y coloca el AAR en `app/libs/media3-decoder-ffmpeg-release.aar`.
+    // 3. Descomenta la siguiente línea:
+    // implementation(files("libs/media3-decoder-ffmpeg-release.aar"))
     
     // Coroutines Guava
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.8.0")

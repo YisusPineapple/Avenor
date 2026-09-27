@@ -91,6 +91,8 @@ fun LibraryScreen(
     val history by viewModel.history.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
     val dailyMix by viewModel.dailyMix.collectAsState()
+    val heavyRotation by viewModel.heavyRotation.collectAsState()
+    val forgottenGems by viewModel.forgottenGems.collectAsState()
     val favoriteSongs by viewModel.favoriteSongs.collectAsState()
     val favoriteSongIds by viewModel.favoriteSongIds.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
@@ -266,6 +268,84 @@ fun LibraryScreen(
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Text(
                                             mixSong.title,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (searchQuery.isBlank() && heavyRotation.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("En Bucle (Últimos 7 días)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            items(heavyRotation.size) { index ->
+                                val rotationSong = heavyRotation[index]
+                                Card(
+                                    modifier = Modifier
+                                        .width(150.dp)
+                                        .clickable { viewModel.playSongList(heavyRotation, index) },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        AvenorAsyncImage(
+                                            model = rotationSong.albumArtUri,
+                                            resolution = appSettings?.albumArtResolution ?: "HIGH",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1f)
+                                                .clip(MaterialTheme.shapes.medium)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            rotationSong.title,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (searchQuery.isBlank() && forgottenGems.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("Joyas Olvidadas", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            items(forgottenGems.size) { index ->
+                                val gemSong = forgottenGems[index]
+                                Card(
+                                    modifier = Modifier
+                                        .width(150.dp)
+                                        .clickable { viewModel.playSongList(forgottenGems, index) },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        AvenorAsyncImage(
+                                            model = gemSong.albumArtUri,
+                                            resolution = appSettings?.albumArtResolution ?: "HIGH",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1f)
+                                                .clip(MaterialTheme.shapes.medium)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            gemSong.title,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
                                             style = MaterialTheme.typography.bodyMedium,

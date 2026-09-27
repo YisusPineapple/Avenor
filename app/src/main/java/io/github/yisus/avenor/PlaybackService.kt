@@ -35,6 +35,7 @@ class PlaybackService : MediaSessionService() {
     internal lateinit var crossfadeManager: DualPlayerCrossfadeManager
     internal lateinit var playbackCoordinator: PlaybackCoordinator
     internal lateinit var eqPreferences: EqPreferences
+    internal lateinit var renderersFactory: io.github.yisus.avenor.audio.AvenorRenderersFactory
     private var audioDeviceCallback: android.media.AudioDeviceCallback? = null
     private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     
@@ -64,7 +65,7 @@ class PlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
             
-        val renderersFactory = io.github.yisus.avenor.audio.AvenorRenderersFactory(
+        renderersFactory = io.github.yisus.avenor.audio.AvenorRenderersFactory(
             context = this,
             universalDownmixAudioProcessor = universalDownmixAudioProcessor,
             replayGainAudioProcessor = replayGainAudioProcessor,
@@ -221,6 +222,7 @@ class PlaybackService : MediaSessionService() {
                         showShuffleButton = appSettings.showShuffle
                         showRepeatButton = appSettings.showRepeat
                         crossfadeManager.isCrossfadeEnabled = appSettings.crossfadeEnabled
+                        renderersFactory.bitPerfectPassthroughEnabled = appSettings.bitPerfectPassthrough
                         mediaSession?.setCustomLayout(buildCustomLayout())
                     }
                 }
@@ -282,6 +284,7 @@ class PlaybackService : MediaSessionService() {
                     .add(SessionCommand("SET_NOTIFICATION_PREFS", Bundle.EMPTY))
                     .add(SessionCommand("SET_REPLAY_GAIN_CONFIG", Bundle.EMPTY))
                     .add(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY))
+                    .add(SessionCommand("SET_PASSTHROUGH_CONFIG", Bundle.EMPTY))
                     .add(SessionCommand("ACTION_SKIP_NEXT", Bundle.EMPTY))
                     .add(SessionCommand("ACTION_SKIP_PREV", Bundle.EMPTY))
                     .build()
@@ -520,6 +523,17 @@ class PlaybackService : MediaSessionService() {
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("PlaybackService", "Error setting crossfade config", e)
+                }
+            }
+            "SET_PASSTHROUGH_CONFIG" -> {
+                try {
+                    if (args.containsKey("bitPerfectPassthrough")) {
+                        renderersFactory.bitPerfectPassthroughEnabled = args.getBoolean("bitPerfectPassthrough", false)
+                    } else if (args.containsKey("enabled")) {
+                        renderersFactory.bitPerfectPassthroughEnabled = args.getBoolean("enabled", false)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaybackService", "Error setting passthrough config", e)
                 }
             }
             "ACTION_SKIP_NEXT" -> {
