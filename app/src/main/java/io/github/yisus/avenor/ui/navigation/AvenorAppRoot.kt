@@ -33,13 +33,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import io.github.yisus.avenor.MainActivity
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.screens.LibraryScreen
+import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 import io.github.yisus.avenor.startMemoryWatchdog
 import io.github.yisus.avenor.ui.components.AuroraBackground
 import io.github.yisus.avenor.ui.screens.EqScreen
-import io.github.yisus.avenor.ui.screens.LibraryScreen
 import io.github.yisus.avenor.ui.screens.LyricsScreen
 import io.github.yisus.avenor.ui.screens.NowPlayingScreen
 import io.github.yisus.avenor.ui.screens.PlaylistDetailsScreen
@@ -56,20 +57,22 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AvenorAppRoot(viewModel: PlaybackViewModel = viewModel()) {
+fun AvenorAppRoot(
+    libraryViewModel: LibraryViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
     val activity = context as? MainActivity
     var hasPermission by remember { mutableStateOf(false) }
-    val appSettings by viewModel.appSettings.collectAsState()
+    val appSettings by playerViewModel.appSettings.collectAsState()
     val isHighLoad by activity?.performanceMonitor?.isHighLoad?.collectAsState(initial = false) ?: remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { isGranted ->
         hasPermission = isGranted
-        if (isGranted) viewModel.loadSongs(context)
+        if (isGranted) libraryViewModel.loadSongs(context)
     }
 
     LaunchedEffect(Unit) {
-        viewModel.initController(context)
         val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         permissionLauncher.launch(permission)
         launch { startMemoryWatchdog(context) }
@@ -151,20 +154,20 @@ fun AvenorAppRoot(viewModel: PlaybackViewModel = viewModel()) {
             ) { paddingValues ->
                 Box(modifier = Modifier.padding(paddingValues)) {
                     when (val screen = currentScreen) {
-                        is Screen.Library -> LibraryScreen(viewModel, onNavigateToPlaylist = { currentScreen = it })
+                        is Screen.Library -> LibraryScreen(libraryViewModel, onNavigateToPlaylist = { currentScreen = it })
                         is Screen.NowPlaying -> NowPlayingScreen(
-                            viewModel,
+                            playerViewModel,
                             onNavigateToEq = { currentScreen = Screen.Equalizer },
                             onNavigateToLyrics = { currentScreen = Screen.Lyrics },
                             onNavigateToQueue = { currentScreen = Screen.Queue }
                         )
-                        is Screen.Settings -> SettingsScreen(viewModel, onNavigateToTrash = { currentScreen = Screen.TrashRecovery })
-                        is Screen.TrashRecovery -> TrashRecoveryScreen(viewModel, onBack = { currentScreen = Screen.Settings })
-                        is Screen.Equalizer -> EqScreen(viewModel)
-                        is Screen.Lyrics -> LyricsScreen(viewModel)
-                        is Screen.Queue -> QueueScreen(viewModel)
-                        is Screen.Recap -> RecapScreen(viewModel)
-                        is Screen.PlaylistDetails -> PlaylistDetailsScreen(viewModel, screen.playlistId)
+                        is Screen.Settings -> SettingsScreen(playerViewModel, libraryViewModel, onNavigateToTrash = { currentScreen = Screen.TrashRecovery })
+                        is Screen.TrashRecovery -> TrashRecoveryScreen(libraryViewModel, onBack = { currentScreen = Screen.Settings })
+                        is Screen.Equalizer -> EqScreen(playerViewModel)
+                        is Screen.Lyrics -> LyricsScreen(playerViewModel)
+                        is Screen.Queue -> QueueScreen(playerViewModel)
+                        is Screen.Recap -> RecapScreen(libraryViewModel)
+                        is Screen.PlaylistDetails -> PlaylistDetailsScreen(libraryViewModel, screen.playlistId)
                     }
                 }
             }

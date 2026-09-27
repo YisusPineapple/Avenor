@@ -46,15 +46,16 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import coil.compose.AsyncImage
+import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
 import io.github.yisus.avenor.ui.components.RenameDialog
-import io.github.yisus.avenor.PlaybackViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlaylistDetailsScreen(viewModel: PlaybackViewModel, playlistId: Int) {
-    val playlistSongs by viewModel.dbRepo.getSongsForPlaylist(playlistId).collectAsState(initial = emptyList())
-    val currentSong by viewModel.currentSong.collectAsState()
-    val isPlaying by viewModel.isPlaying.collectAsState()
+fun PlaylistDetailsScreen(viewModel: LibraryViewModel, playlistId: Int) {
+    val playlistSongs by viewModel.getSongsForPlaylist(playlistId).collectAsState(initial = emptyList())
+    val playbackState by viewModel.playbackState.collectAsState()
+    val currentSong = playbackState.currentSong
+    val isPlaying = playbackState.isPlaying
     var showAddSongsDialog by remember { mutableStateOf(false) }
     var dialogSearchQuery by remember { mutableStateOf("") }
     var selectedSongIds by remember { mutableStateOf(setOf<Long>()) }

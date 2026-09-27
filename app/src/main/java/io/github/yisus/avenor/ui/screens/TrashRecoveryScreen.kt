@@ -25,12 +25,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import io.github.yisus.avenor.TrashItem
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrashRecoveryScreen(viewModel: PlaybackViewModel, onBack: () -> Unit) {
+fun TrashRecoveryScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<TrashItem>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }

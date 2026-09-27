@@ -30,21 +30,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.github.yisus.avenor.PlaybackViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @Composable
-fun LyricsScreen(viewModel: PlaybackViewModel) {
+fun LyricsScreen(
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
-    val currentPosition by viewModel.currentPosition.collectAsState()
-    val lyricsOffset by viewModel.lyricsOffsetMs.collectAsState()
-    val isPlaying by viewModel.isPlaying.collectAsState()
-    val currentSong by viewModel.currentSong.collectAsState()
-    val lyrics by viewModel.currentLyrics.collectAsState()
-    val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsState()
+    val currentPosition by playerViewModel.currentPosition.collectAsState()
+    val lyricsOffset by playerViewModel.lyricsOffsetMs.collectAsState()
+    val isPlaying by playerViewModel.isPlaying.collectAsState()
+    val currentSong by playerViewModel.currentSong.collectAsState()
+    val lyrics by playerViewModel.currentLyrics.collectAsState()
+    val isLoadingLyrics by playerViewModel.isLoadingLyrics.collectAsState()
     val listState = rememberLazyListState()
 
     LaunchedEffect(currentSong) {
-        currentSong?.let { viewModel.loadLyricsForSong(it, context) }
+        currentSong?.let { playerViewModel.loadLyricsForSong(it, context) }
     }
 
     val activeIndex = remember(lyrics, currentPosition, lyricsOffset) {
@@ -114,7 +117,7 @@ fun LyricsScreen(viewModel: PlaybackViewModel) {
                         color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                         modifier = Modifier
                             .padding(vertical = 12.dp)
-                            .clickable { viewModel.seekTo(line.timeMs) }
+                            .clickable { playerViewModel.seekTo(line.timeMs) }
                     )
                 }
             }

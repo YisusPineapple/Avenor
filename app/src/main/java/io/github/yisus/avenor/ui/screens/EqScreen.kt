@@ -36,7 +36,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @Composable
 fun OptimizedVerticalSlider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
@@ -49,7 +49,7 @@ fun OptimizedVerticalSlider(value: Float, onValueChange: (Float) -> Unit, modifi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EqScreen(viewModel: PlaybackViewModel) {
+fun EqScreen(viewModel: PlayerViewModel) {
     val bands by viewModel.eqBands.collectAsState()
     val presets by viewModel.eqPresets.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()

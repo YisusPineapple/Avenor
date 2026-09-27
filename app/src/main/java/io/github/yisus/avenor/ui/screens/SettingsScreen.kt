@@ -32,11 +32,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.yisus.avenor.AppSetting
 import io.github.yisus.avenor.DesktopParityDashboard
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(viewModel: PlaybackViewModel, onNavigateToTrash: () -> Unit = {}) {
+fun SettingsScreen(
+    viewModel: PlayerViewModel,
+    libraryViewModel: LibraryViewModel,
+    onNavigateToTrash: () -> Unit = {}
+) {
     val appSettings by viewModel.appSettings.collectAsState()
     val settings = appSettings ?: AppSetting()
     val coroutineScope = rememberCoroutineScope()
@@ -100,7 +105,7 @@ fun SettingsScreen(viewModel: PlaybackViewModel, onNavigateToTrash: () -> Unit =
                             Button(
                                 onClick = { 
                                     coroutineScope.launch { 
-                                        viewModel.emptyTrashSecurely(context)
+                                        libraryViewModel.emptyTrashSecurely(context)
                                         Toast.makeText(context, "Trash Emptied Securely", Toast.LENGTH_SHORT).show()
                                     } 
                                 },

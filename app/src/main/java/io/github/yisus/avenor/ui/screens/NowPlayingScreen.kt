@@ -68,14 +68,14 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import io.github.yisus.avenor.AutoMixState
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 import io.github.yisus.avenor.util.formatMs
-import io.github.yisus.avenor.PlaybackViewModel
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(
-    viewModel: PlaybackViewModel,
+    viewModel: PlayerViewModel,
     onNavigateToEq: () -> Unit,
     onNavigateToLyrics: () -> Unit,
     onNavigateToQueue: () -> Unit

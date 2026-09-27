@@ -21,11 +21,13 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import dagger.hilt.android.AndroidEntryPoint
 import io.github.yisus.avenor.dsp.EqBandSettings
 import io.github.yisus.avenor.dsp.EqPreferences
 import io.github.yisus.avenor.dsp.EqualizerAudioProcessor
 import io.github.yisus.avenor.playback.PlaybackCoordinator
 
+@AndroidEntryPoint
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     internal var mediaSession: MediaSession? = null

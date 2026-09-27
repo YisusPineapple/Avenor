@@ -33,15 +33,6 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
-
-        <service
-            android:name=".app.playback.AvenorPlaybackService"
-            android:foregroundServiceType="mediaPlayback"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
     
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -32,9 +32,10 @@ import kotlin.coroutines.coroutineContext
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 object DesktopMediaKeyManager {
-    fun handleMediaKeyEvent(event: KeyEvent, viewModel: PlaybackViewModel): Boolean {
+    fun handleMediaKeyEvent(event: KeyEvent, viewModel: PlayerViewModel): Boolean {
         return if (DeviceProfileManager.isDesktop()) {
             when (event.key) {
                 Key.MediaPlayPause, Key.Spacebar -> { viewModel.togglePlayPause(); true }

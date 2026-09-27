@@ -24,11 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LyricSyncOverlay(viewModel: PlaybackViewModel, onDismiss: () -> Unit) {
+fun LyricSyncOverlay(viewModel: PlayerViewModel, onDismiss: () -> Unit) {
     val lyricsOffset by viewModel.lyricsOffsetMs.collectAsState()
     
     ModalBottomSheet(onDismissRequest = onDismiss) {

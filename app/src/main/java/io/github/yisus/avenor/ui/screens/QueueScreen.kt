@@ -40,10 +40,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @Composable
-fun QueueScreen(viewModel: PlaybackViewModel) {
+fun QueueScreen(viewModel: PlayerViewModel) {
     val queue by viewModel.queue.collectAsState()
     val currentSong by viewModel.currentSong.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()

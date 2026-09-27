@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -13,11 +12,13 @@ import coil.ImageLoader
 import coil.compose.LocalImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import dagger.hilt.android.AndroidEntryPoint
 import io.github.yisus.avenor.ui.components.DesktopInputWrapper
 import io.github.yisus.avenor.ui.navigation.AvenorAppRoot
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     lateinit var performanceMonitor: PerformanceMonitor
 
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CompositionLocalProvider(LocalImageLoader provides imageLoader) {
-                DesktopInputWrapper(viewModel = viewModel()) {
+                DesktopInputWrapper {
                     AvenorAppRoot()
                 }
             }

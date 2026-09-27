@@ -16,12 +16,16 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.hilt.navigation.compose.hiltViewModel
 import io.github.yisus.avenor.DesktopMediaKeyManager
 import io.github.yisus.avenor.DeviceProfileManager
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @Composable
-fun DesktopInputWrapper(viewModel: PlaybackViewModel, content: @Composable () -> Unit) {
+fun DesktopInputWrapper(
+    playerViewModel: PlayerViewModel = hiltViewModel(),
+    content: @Composable () -> Unit
+) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     
@@ -33,14 +37,14 @@ fun DesktopInputWrapper(viewModel: PlaybackViewModel, content: @Composable () ->
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyUp) {
                     if (DeviceProfileManager.isDesktop()) {
-                        DesktopMediaKeyManager.handleMediaKeyEvent(event, viewModel)
+                        DesktopMediaKeyManager.handleMediaKeyEvent(event, playerViewModel)
                     } else {
                         when (event.key) {
-                            Key.Spacebar, Key.Enter, Key.MediaPlayPause -> { viewModel.togglePlayPause(); true }
-                            Key.DirectionRight, Key.MediaNext -> { viewModel.skipToNext(); true }
-                            Key.DirectionLeft, Key.MediaPrevious -> { viewModel.skipToPrevious(); true }
-                            Key.MediaPlay -> { if (viewModel.isPlaying.value == false) viewModel.togglePlayPause(); true }
-                            Key.MediaPause -> { if (viewModel.isPlaying.value == true) viewModel.togglePlayPause(); true }
+                            Key.Spacebar, Key.Enter, Key.MediaPlayPause -> { playerViewModel.togglePlayPause(); true }
+                            Key.DirectionRight, Key.MediaNext -> { playerViewModel.skipToNext(); true }
+                            Key.DirectionLeft, Key.MediaPrevious -> { playerViewModel.skipToPrevious(); true }
+                            Key.MediaPlay -> { if (playerViewModel.isPlaying.value == false) playerViewModel.togglePlayPause(); true }
+                            Key.MediaPause -> { if (playerViewModel.isPlaying.value == true) playerViewModel.togglePlayPause(); true }
                             else -> false
                         }
                     }
@@ -53,9 +57,9 @@ fun DesktopInputWrapper(viewModel: PlaybackViewModel, content: @Composable () ->
                         if (event.type == PointerEventType.Scroll) {
                             val deltaY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                             if (deltaY > 0) {
-                                viewModel.skipToNext()
+                                playerViewModel.skipToNext()
                             } else if (deltaY < 0) {
-                                viewModel.skipToPrevious()
+                                playerViewModel.skipToPrevious()
                             }
                         }
                     }

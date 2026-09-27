@@ -44,11 +44,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.yisus.avenor.ImageShareHelper
 import io.github.yisus.avenor.RecapExportCard
-import io.github.yisus.avenor.PlaybackViewModel
+import io.github.yisus.avenor.app.ui.viewmodels.LibraryViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun RecapScreen(viewModel: PlaybackViewModel) {
+fun RecapScreen(viewModel: LibraryViewModel) {
     val topSongs by viewModel.topSongs.collectAsState()
     val topArtist by viewModel.topArtist.collectAsState()
     val totalTimeMs by viewModel.totalListeningTimeMs.collectAsState()
