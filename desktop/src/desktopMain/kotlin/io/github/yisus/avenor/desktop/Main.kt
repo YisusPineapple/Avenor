@@ -1,7 +1,10 @@
 package io.github.yisus.avenor.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -22,6 +25,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.yisus.avenor.shared.NowPlayingState
 import io.github.yisus.avenor.shared.playback.PlaybackState
+import javax.swing.JFileChooser
 
 /**
  * Desktop entry point for Avenor Music Player.
@@ -286,19 +290,18 @@ fun AvenorDesktopApp(
 
 @Composable
 fun DesktopLibraryView(controller: DesktopPlaybackController) {
-    val defaultTestPath = remember {
-        val osName = System.getProperty("os.name").orEmpty().lowercase()
-        if (osName.contains("win")) {
-            "C:/ruta/a/tu/musica.mp3"
-        } else {
-            "/home/user/musica.mp3"
-        }
-    }
-    var testFilePath by remember { mutableStateOf(defaultTestPath) }
+    val queue by controller.queue.collectAsState()
+    val currentMediaItem by controller.currentMediaItem.collectAsState()
+    val isScanning by controller.isScanning.collectAsState()
+    var selectedFolderPath by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Local Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Scan local directories to populate music files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Scan local directories recursively to populate audiophile music files.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(modifier = Modifier.height(24.dp))
         Card(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -308,33 +311,130 @@ fun DesktopLibraryView(controller: DesktopPlaybackController) {
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.Default.FolderOpen,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Select Music Folder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Supports MP3, FLAC, WAV, OGG, OPUS, M4A", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Supports FLAC, ALAC, WAV, MP3, M4A, OGG, OPUS, APE, WV, DSF",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (selectedFolderPath.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = selectedFolderPath,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                OutlinedTextField(
-                    value = testFilePath,
-                    onValueChange = { testFilePath = it },
-                    label = { Text("Local Test Audio File Path") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(0.7f)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 Button(
-                    onClick = { controller.playTestFile(testFilePath) },
+                    onClick = {
+                        val chooser = JFileChooser().apply {
+                            dialogTitle = "Select Music Folder"
+                            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                            isAcceptAllFileFilterUsed = false
+                        }
+                        val result = chooser.showOpenDialog(null)
+                        if (result == JFileChooser.APPROVE_OPTION) {
+                            val folderPath = chooser.selectedFile?.absolutePath.orEmpty()
+                            if (folderPath.isNotBlank()) {
+                                selectedFolderPath = folderPath
+                                controller.scanAndPlayFolder(folderPath)
+                            }
+                        }
+                    },
+                    enabled = !isScanning,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Icon(Icons.Default.FolderOpen, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Test Audio")
+                    Text(if (isScanning) "Scanning..." else "Select Music Folder")
+                }
+
+                if (isScanning) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(0.5f))
+                }
+            }
+        }
+
+        if (queue.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Scanned Tracks (${queue.size})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(queue, key = { it.id }) { item ->
+                    val isCurrent = currentMediaItem?.id == item.id
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { controller.loadAndPlay(item) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isCurrent) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isCurrent) Icons.Default.GraphicEq else Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.title,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isCurrent) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = item.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

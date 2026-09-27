@@ -3,9 +3,16 @@ package io.github.yisus.avenor.desktop
 import io.github.yisus.avenor.shared.playback.AvenorPlaybackController
 import io.github.yisus.avenor.shared.playback.CurrentMediaItem
 import io.github.yisus.avenor.shared.playback.PlaybackState
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import uk.co.caprica.vlcj.factory.MediaPlayerFactory
 import uk.co.caprica.vlcj.media.MediaRef
 import uk.co.caprica.vlcj.media.Meta
@@ -17,11 +24,26 @@ typealias AudioMediaPlayerComponent = AudioPlayerComponent
 
 class DesktopPlaybackController : AvenorPlaybackController {
 
+    companion object {
+        private val SUPPORTED_AUDIO_EXTENSIONS = setOf(
+            "flac", "alac", "wav", "mp3", "m4a", "ogg", "opus", "ape", "wv", "dsf"
+        )
+    }
+
+    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scanJob: Job? = null
+
     private val _playbackState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     private val _currentMediaItem = MutableStateFlow<CurrentMediaItem?>(null)
     override val currentMediaItem: StateFlow<CurrentMediaItem?> = _currentMediaItem.asStateFlow()
+
+    private val _queue = MutableStateFlow<List<CurrentMediaItem>>(emptyList())
+    val queue: StateFlow<List<CurrentMediaItem>> = _queue.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
     private val _currentPositionMs = MutableStateFlow(0L)
     val currentPositionFlow: StateFlow<Long> = _currentPositionMs.asStateFlow()
@@ -62,6 +84,9 @@ class DesktopPlaybackController : AvenorPlaybackController {
         override fun finished(mediaPlayer: MediaPlayer) {
             _playbackState.value = PlaybackState.Paused
             _currentPositionMs.value = 0L
+            controllerScope.launch {
+                skipToNext()
+            }
         }
 
         override fun error(mediaPlayer: MediaPlayer) {
@@ -117,6 +142,48 @@ class DesktopPlaybackController : AvenorPlaybackController {
         this.audioMediaPlayerComponent = component
     }
 
+    fun scanAndPlayFolder(folderPath: String) {
+        if (folderPath.isBlank()) return
+        scanJob?.cancel()
+        scanJob = controllerScope.launch(Dispatchers.IO) {
+            _isScanning.value = true
+            try {
+                val rootDir = File(folderPath)
+                if (!rootDir.exists() || !rootDir.isDirectory) {
+                    _playbackState.value = PlaybackState.Error("Invalid folder path: $folderPath")
+                    return@launch
+                }
+
+                val scannedItems = rootDir.walkTopDown()
+                    .filter { file ->
+                        file.isFile && file.extension.lowercase() in SUPPORTED_AUDIO_EXTENSIONS
+                    }
+                    .sortedBy { it.name.lowercase() }
+                    .map { file ->
+                        CurrentMediaItem(
+                            id = file.absolutePath,
+                            title = file.nameWithoutExtension.ifBlank { file.name },
+                            artist = file.parentFile?.name?.takeIf { it.isNotBlank() } ?: "Local Library",
+                            uri = file.absolutePath
+                        )
+                    }
+                    .toList()
+
+                _queue.value = scannedItems
+                if (scannedItems.isNotEmpty()) {
+                    loadAndPlay(scannedItems.first())
+                }
+            } catch (t: Throwable) {
+                _playbackState.value = PlaybackState.Error(
+                    message = "Failed to scan folder: ${t.message}",
+                    cause = t
+                )
+            } finally {
+                _isScanning.value = false
+            }
+        }
+    }
+
     fun loadAndPlay(mediaItem: CurrentMediaItem) {
         _currentMediaItem.value = mediaItem
         _currentPositionMs.value = 0L
@@ -162,11 +229,21 @@ class DesktopPlaybackController : AvenorPlaybackController {
     }
 
     override fun skipToNext() {
-        println("DesktopPlaybackController: skipToNext() invoked - queue managed by UI layer")
+        val currentList = _queue.value
+        if (currentList.isEmpty()) return
+        val currentId = _currentMediaItem.value?.id
+        val currentIndex = currentList.indexOfFirst { it.id == currentId }
+        val nextIndex = if (currentIndex in 0 until currentList.lastIndex) currentIndex + 1 else 0
+        loadAndPlay(currentList[nextIndex])
     }
 
     override fun skipToPrevious() {
-        println("DesktopPlaybackController: skipToPrevious() invoked - queue managed by UI layer")
+        val currentList = _queue.value
+        if (currentList.isEmpty()) return
+        val currentId = _currentMediaItem.value?.id
+        val currentIndex = currentList.indexOfFirst { it.id == currentId }
+        val prevIndex = if (currentIndex > 0) currentIndex - 1 else currentList.lastIndex
+        loadAndPlay(currentList[prevIndex])
     }
 
     override fun seekTo(positionMs: Long) {
@@ -176,6 +253,8 @@ class DesktopPlaybackController : AvenorPlaybackController {
     }
 
     fun release() {
+        scanJob?.cancel()
+        controllerScope.cancel()
         try {
             audioMediaPlayerComponent?.mediaPlayer()?.events()?.removeMediaPlayerEventListener(eventListener)
             audioMediaPlayerComponent?.mediaPlayer()?.controls()?.stop()
@@ -192,3 +271,4 @@ class DesktopPlaybackController : AvenorPlaybackController {
         _playbackState.value = PlaybackState.Idle
     }
 }
+

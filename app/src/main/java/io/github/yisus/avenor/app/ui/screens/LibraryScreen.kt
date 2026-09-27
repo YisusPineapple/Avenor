@@ -1,7 +1,16 @@
 package io.github.yisus.avenor.app.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,16 +21,23 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -44,6 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,9 +72,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +90,7 @@ import io.github.yisus.avenor.ui.components.AvenorAsyncImage
 import io.github.yisus.avenor.ui.components.RenameDialog
 import io.github.yisus.avenor.ui.navigation.Screen
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
@@ -79,11 +98,13 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val pagedSongs = viewModel.pagedSongs.collectAsLazyPagingItems()
     val songsCount by viewModel.songsCount.collectAsState()
     val scanProgress by viewModel.scanProgress.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val sortOrder by viewModel.sortOrder.collectAsState()
+    val selectedSongs by viewModel.selectedSongs.collectAsState()
 
     val playbackState by viewModel.playbackState.collectAsState()
     val currentSong = playbackState.currentSong
@@ -98,8 +119,13 @@ fun LibraryScreen(
     val appSettings by viewModel.appSettings.collectAsState()
 
     var showPlaylistDialog by remember { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = selectedSongs.isNotEmpty()) {
+        viewModel.clearSelection()
+    }
 
     if (showPlaylistDialog) {
         AlertDialog(
@@ -127,12 +153,151 @@ fun LibraryScreen(
         )
     }
 
+    if (showAddToPlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddToPlaylistDialog = false },
+            title = { Text("Añadir a Playlist (${selectedSongs.size})") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (playlists.isEmpty()) {
+                        Text(
+                            "No tienes playlists creadas todavía.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(playlists, key = { it.id }) { playlist ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .clickable {
+                                            viewModel.addSongsToPlaylist(playlist.id, selectedSongs)
+                                            viewModel.clearSelection()
+                                            showAddToPlaylistDialog = false
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = playlist.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            showAddToPlaylistDialog = false
+                            playlistName = ""
+                            showPlaylistDialog = true
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Nueva Playlist")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAddToPlaylistDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
             .testTag("library_screen")
     ) {
+        AnimatedVisibility(
+            visible = selectedSongs.isNotEmpty(),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .testTag("selection_top_bar"),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 4.dp,
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { viewModel.clearSelection() },
+                        modifier = Modifier.testTag("clear_selection_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Limpiar Selección"
+                        )
+                    }
+                    Text(
+                        text = "${selectedSongs.size} seleccionadas",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = { viewModel.enqueueSelected() },
+                        modifier = Modifier.testTag("enqueue_selected_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                            contentDescription = "Añadir a la Cola"
+                        )
+                    }
+                    IconButton(
+                        onClick = { showAddToPlaylistDialog = true },
+                        modifier = Modifier.testTag("add_to_playlist_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                            contentDescription = "Añadir a Playlist"
+                        )
+                    }
+                }
+            }
+        }
         if (songsCount == 0 && !scanProgress.isScanning) {
             Box(
                 modifier = Modifier
@@ -521,38 +686,85 @@ fun LibraryScreen(
                     val song = pagedSongs[index]
                     if (song != null) {
                         val isCurrent = currentSong?.id == song.id
+                        val isSelected = selectedSongs.contains(song.id)
                         val isFav = favoriteSongIds.contains(song.id)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.playFromLibrary(song) }
+                                .clip(MaterialTheme.shapes.medium)
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectedSongs.isNotEmpty()) {
+                                            viewModel.toggleSelection(song.id)
+                                        } else {
+                                            viewModel.playFromLibrary(song)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.toggleSelection(song.id)
+                                    }
+                                )
                                 .testTag("library_song_item_${song.id}"),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                                containerColor = when {
+                                    isSelected -> MaterialTheme.colorScheme.secondaryContainer
+                                    isCurrent -> MaterialTheme.colorScheme.primaryContainer
+                                    else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                                }
                             ),
+                            border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(MaterialTheme.shapes.small),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     AvenorAsyncImage(
                                         model = song.albumArtUri,
                                         resolution = appSettings?.albumArtResolution ?: "HIGH",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Seleccionada",
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = song.title,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                        color = when {
+                                            isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            isCurrent -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
                                         maxLines = 1
                                     )
                                     Text(
                                         text = song.artist,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = when {
+                                            isSelected -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                            isCurrent -> MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
                                         maxLines = 1
                                     )
 

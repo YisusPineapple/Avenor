@@ -89,6 +89,9 @@ class LibraryViewModel @Inject constructor(
     private val _sortOrder = MutableStateFlow(SongSortOrder.TITLE)
     val sortOrder: StateFlow<SongSortOrder> = _sortOrder.asStateFlow()
 
+    private val _selectedSongs = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedSongs: StateFlow<Set<Long>> = _selectedSongs.asStateFlow()
+
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val pagedSongs: Flow<PagingData<Song>> = combine(_sortOrder, _searchQuery.debounce(200)) { sort, query ->
         sort to query
@@ -256,6 +259,55 @@ class LibraryViewModel @Inject constructor(
                 dbRepo.addSongToPlaylist(playlistId, songId)
             }
         }
+    }
+
+    fun toggleSelection(songId: Long) {
+        val current = _selectedSongs.value
+        _selectedSongs.value = if (current.contains(songId)) {
+            current - songId
+        } else {
+            current + songId
+        }
+    }
+
+    fun clearSelection() {
+        _selectedSongs.value = emptySet()
+    }
+
+    fun enqueueSelected() {
+        val selectedIds = _selectedSongs.value.toList()
+        if (selectedIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val songsById = dbRepo.getSongsByIds(selectedIds).associateBy { it.id }
+            val orderedSongs = selectedIds.mapNotNull { songsById[it] }
+            if (orderedSongs.isNotEmpty()) {
+                playbackCoordinator.enqueueAll(orderedSongs)
+                val mediaItems = orderedSongs.map { song ->
+                    MediaItem.Builder()
+                        .setMediaId(song.id.toString())
+                        .setUri(song.uri)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(song.title)
+                                .setArtist(song.artist)
+                                .setAlbumTitle(song.album)
+                                .build()
+                        )
+                        .build()
+                }
+                withContext(Dispatchers.Main) {
+                    mediaController?.addMediaItems(mediaItems)
+                }
+            }
+            _selectedSongs.value = emptySet()
+        }
+    }
+
+    fun addSelectedToPlaylist(playlistId: Int) {
+        val selectedIds = _selectedSongs.value.toList()
+        if (selectedIds.isEmpty()) return
+        addSongsToPlaylist(playlistId, selectedIds)
+        clearSelection()
     }
 
     suspend fun emptyTrashSecurely(context: Context = appContext) {

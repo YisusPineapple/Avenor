@@ -18,7 +18,9 @@ import io.github.yisus.avenor.AppDatabase
 import io.github.yisus.avenor.AppSetting
 import io.github.yisus.avenor.DatabaseRepository
 import io.github.yisus.avenor.EqPreset
+import io.github.yisus.avenor.PlaybackQueue
 import io.github.yisus.avenor.PlaybackService
+import io.github.yisus.avenor.QueueSong
 import io.github.yisus.avenor.Song
 import io.github.yisus.avenor.dsp.EqPreferences
 import io.github.yisus.avenor.dsp.EqPresetDefinitions
@@ -78,6 +80,9 @@ class PlayerViewModel @Inject constructor(
 
     private val _queue = MutableStateFlow<List<Song>>(emptyList())
     val queue: StateFlow<List<Song>> = _queue.asStateFlow()
+
+    val allQueues: StateFlow<List<PlaybackQueue>> = dbRepo.dao.getAllQueues()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _currentLyrics = MutableStateFlow<List<LyricLine>>(emptyList())
     val currentLyrics: StateFlow<List<LyricLine>> = _currentLyrics.asStateFlow()
@@ -340,6 +345,59 @@ class PlayerViewModel @Inject constructor(
                 shuffleMode = coordState.shuffleMode,
                 repeatMode = coordState.repeatMode
             )
+        }
+    }
+
+    fun saveCurrentQueueAs(name: String) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return
+        val activeSongs = _queue.value
+        if (activeSongs.isEmpty()) return
+        val coordState = playbackCoordinator.playbackState.value
+        val currentSongId = _currentSong.value?.id
+        val currentIndex = activeSongs.indexOfFirst { it.id == currentSongId }.takeIf { it >= 0 } ?: coordState.currentIndex
+        val currentPos = _currentPosition.value
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val existingQueues = dbRepo.dao.getAllQueuesSync()
+            val nextId = ((existingQueues.maxOfOrNull { it.id } ?: 1).coerceAtLeast(1)) + 1
+            val newQueue = PlaybackQueue(
+                id = nextId,
+                name = trimmedName,
+                currentSongId = currentSongId,
+                currentIndex = currentIndex.coerceAtLeast(0),
+                currentPositionMs = currentPos,
+                shuffleMode = _isShuffleEnabled.value,
+                repeatMode = _repeatMode.value,
+                isPlaying = _isPlaying.value,
+                updatedAt = System.currentTimeMillis()
+            )
+            val queueItems = activeSongs.mapIndexed { index, song ->
+                QueueSong(
+                    queueId = nextId,
+                    songId = song.id,
+                    positionIndex = index
+                )
+            }
+            dbRepo.dao.saveFullQueue(newQueue, queueItems)
+        }
+    }
+
+    fun loadQueue(queueId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val savedQueue = dbRepo.dao.getPlaybackQueueSync(queueId) ?: return@launch
+            val queueRefs = dbRepo.dao.getQueueSongsSync(queueId)
+            val songsById = dbRepo.dao.getSongsForQueueSync(queueId).associateBy { it.id }
+            val orderedSongs = if (queueRefs.isNotEmpty()) {
+                queueRefs.mapNotNull { songsById[it.songId] }
+            } else {
+                songsById.values.toList()
+            }
+            if (orderedSongs.isEmpty()) return@launch
+            val validIndex = savedQueue.currentIndex.coerceIn(0, orderedSongs.lastIndex)
+            withContext(Dispatchers.Main) {
+                playSongList(orderedSongs, validIndex)
+            }
         }
     }
 
