@@ -96,11 +96,10 @@ class DualPlayerCrossfadeManager(
 
             when (reason) {
                 Player.DISCONTINUITY_REASON_AUTO_TRANSITION -> {
-                    if (isCrossfadeEnabled) {
-                        onAutoTransition()
-                    } else {
-                        cancelAndReset()
-                    }
+                    // AUTO_TRANSITION deja de usar el motor dual-player ("ghost player") hasta
+                    // que se corrija el bug de reentrancia en `onAutoTransition()` (ver
+                    // ROADMAP task 3.17). El crossfade manual sigue activo vía `manualSkip()`.
+                    cancelAndReset()
                 }
                 Player.DISCONTINUITY_REASON_SEEK -> {
                     if (_transitionState.value != TransitionState.IDLE) {

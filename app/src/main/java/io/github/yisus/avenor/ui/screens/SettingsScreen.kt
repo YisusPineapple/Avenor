@@ -234,29 +234,6 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.saveSettings(settings.copy(crossfadeEnabled = it)) }
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "AutoMix Inteligente")
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "En modo ECO, el crossfade se simplifica automáticamente para ahorrar RAM.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = settings.autoMixEnabled,
-                            onCheckedChange = { viewModel.saveSettings(settings.copy(autoMixEnabled = it)) }
-                        )
-                    }
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))

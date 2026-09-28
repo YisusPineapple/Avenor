@@ -187,7 +187,6 @@ class PlayerViewModel @Inject constructor(
                         updateNotificationPrefs(s.showLike, s.showShuffle, s.showRepeat)
                         val crossfadeArgs = Bundle().apply {
                             putBoolean("enabled", s.crossfadeEnabled)
-                            putBoolean("autoMixEnabled", s.autoMixEnabled)
                         }
                         mc.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
 
@@ -526,7 +525,6 @@ class PlayerViewModel @Inject constructor(
             updateNotificationPrefs(setting.showLike, setting.showShuffle, setting.showRepeat)
             val crossfadeArgs = Bundle().apply {
                 putBoolean("enabled", setting.crossfadeEnabled)
-                putBoolean("autoMixEnabled", setting.autoMixEnabled)
             }
             mediaController?.sendCustomCommand(SessionCommand("SET_CROSSFADE_CONFIG", Bundle.EMPTY), crossfadeArgs)
             val passthroughArgs = Bundle().apply {
