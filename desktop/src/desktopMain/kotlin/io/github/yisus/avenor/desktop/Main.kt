@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -71,6 +72,7 @@ fun AvenorDesktopApp(
     val currentMediaItem by controller.currentMediaItem.collectAsState()
     val currentPositionMs by controller.currentPositionFlow.collectAsState()
     val durationMs by controller.durationFlow.collectAsState()
+    val vlcAvailability by controller.vlcAvailability.collectAsState()
 
     val isPlaying = playbackState is PlaybackState.Playing
     val isCrossfading by NowPlayingState.isCrossfading.collectAsState()
@@ -86,6 +88,13 @@ fun AvenorDesktopApp(
 
     val sliderMaxMs = remember(durationMs, currentPositionMs) {
         maxOf(durationMs, currentPositionMs, 180_000L).toFloat()
+    }
+
+    if (vlcAvailability is VlcAvailability.Unavailable) {
+        DesktopVlcMissingScreen(
+            reason = (vlcAvailability as VlcAvailability.Unavailable).reason
+        )
+        return
     }
 
     MaterialTheme(
@@ -486,5 +495,70 @@ fun DesktopSettingsView() {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Audio & App Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("Configure gapless playback, crossfading, themes, and storage.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun DesktopVlcMissingScreen(reason: String) {
+    val primary = Color(0xFFE06C53)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(48.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = primary,
+                modifier = Modifier.size(72.dp)
+            )
+            Text(
+                text = "VLC Media Player no encontrado",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "Avenor usa libVLC para reproducir audio en Windows y Linux. " +
+                    "Instalá VLC y reiniciá Avenor.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Detalle técnico: $reason",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { openVlcDownloadPage() },
+                colors = ButtonDefaults.buttonColors(containerColor = primary)
+            ) {
+                Text("Abrir página de descarga")
+            }
+        }
+    }
+}
+
+private fun openVlcDownloadPage() {
+    val url = "https://www.videolan.org/vlc/"
+    try {
+        if (java.awt.Desktop.isDesktopSupported()) {
+            val desktop = java.awt.Desktop.getDesktop()
+            if (desktop.isSupported(java.awt.Desktop.Action.BROWSE)) {
+                desktop.browse(java.net.URI(url))
+            }
+        }
+    } catch (_: Throwable) {
+        // Silencioso: si no hay Desktop.browse disponible, el usuario abre el link a mano.
     }
 }

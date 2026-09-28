@@ -1,10 +1,12 @@
 package io.github.yisus.avenor.ui.navigation
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -74,9 +76,16 @@ fun AvenorAppRoot(
         if (isGranted) libraryViewModel.loadSongs(context)
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* no-op: si deniega, la notificación simplemente no aparece */ }
+
     LaunchedEffect(Unit) {
         val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         permissionLauncher.launch(permission)
+        if (shouldRequestPostNotifications(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         launch { startMemoryWatchdog(context) }
     }
 
@@ -183,3 +192,15 @@ fun AvenorAppRoot(
         }
     }
 }
+
+internal fun shouldRequestPostNotifications(
+    context: android.content.Context,
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Boolean {
+    if (sdkInt < Build.VERSION_CODES.TIRAMISU) return false
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.POST_NOTIFICATIONS
+    ) != PackageManager.PERMISSION_GRANTED
+}
+

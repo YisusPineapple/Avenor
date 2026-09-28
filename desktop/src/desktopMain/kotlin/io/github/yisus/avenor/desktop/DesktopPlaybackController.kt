@@ -22,6 +22,12 @@ import uk.co.caprica.vlcj.player.component.AudioPlayerComponent
 
 typealias AudioMediaPlayerComponent = AudioPlayerComponent
 
+sealed interface VlcAvailability {
+    data object Available : VlcAvailability
+    data class Unavailable(val reason: String) : VlcAvailability
+    data object Unknown : VlcAvailability
+}
+
 class DesktopPlaybackController : AvenorPlaybackController {
 
     companion object {
@@ -35,6 +41,9 @@ class DesktopPlaybackController : AvenorPlaybackController {
 
     private val _playbackState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    private val _vlcAvailability = MutableStateFlow<VlcAvailability>(VlcAvailability.Unknown)
+    val vlcAvailability: StateFlow<VlcAvailability> = _vlcAvailability.asStateFlow()
 
     private val _currentMediaItem = MutableStateFlow<CurrentMediaItem?>(null)
     override val currentMediaItem: StateFlow<CurrentMediaItem?> = _currentMediaItem.asStateFlow()
@@ -128,10 +137,14 @@ class DesktopPlaybackController : AvenorPlaybackController {
             factory = MediaPlayerFactory("--no-video")
             component = AudioMediaPlayerComponent(factory)
             component.mediaPlayer().events().addMediaPlayerEventListener(eventListener)
+            _vlcAvailability.value = VlcAvailability.Available
         } catch (t: Throwable) {
             _playbackState.value = PlaybackState.Error(
                 message = "Failed to initialize libVLC / VLCJ: ${t.message}",
                 cause = t
+            )
+            _vlcAvailability.value = VlcAvailability.Unavailable(
+                t.message ?: "libVLC no encontrado en el sistema"
             )
             component?.release()
             factory?.release()

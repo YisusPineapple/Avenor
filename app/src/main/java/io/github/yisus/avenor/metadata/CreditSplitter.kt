@@ -18,13 +18,25 @@ object CreditSplitter {
     )
 
     /**
+     * Lowercase whitelist of single artist/duo names that contain delimiter characters
+     * (such as '&') and must not be split into separate artist credits.
+     */
+    private val SINGLE_ARTIST_WHITELIST = setOf(
+        "simon & garfunkel"
+    )
+
+    /**
      * Splits a raw artist string (e.g. "Artist A feat. Artist B & Artist C")
      * into a clean list of individual artist names.
      */
     fun splitArtists(rawArtist: String): List<String> {
-        if (rawArtist.isBlank()) return emptyList()
+        val trimmed = rawArtist.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        if (trimmed.lowercase() in SINGLE_ARTIST_WHITELIST) {
+            return listOf(trimmed)
+        }
         return ARTIST_DELIMITER_REGEX
-            .split(rawArtist)
+            .split(trimmed)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
     }
