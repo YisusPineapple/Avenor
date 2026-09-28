@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
@@ -82,6 +83,7 @@ class PlayerViewModel @Inject constructor(
     val queue: StateFlow<List<Song>> = _queue.asStateFlow()
 
     val allQueues: StateFlow<List<PlaybackQueue>> = dbRepo.dao.getAllQueues()
+        .map { filterSavedQueues(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _currentLyrics = MutableStateFlow<List<LyricLine>>(emptyList())
@@ -555,5 +557,15 @@ class PlayerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         mediaControllerFuture?.let { MediaController.releaseFuture(it) }
+    }
+
+    companion object {
+        /**
+         * Excluye la cola activa ([PlaybackCoordinator.ACTIVE_QUEUE_ID]) del listado
+         * de colas guardadas. La cola activa es un registro interno que se
+         * reescribe en cada cambio de reproducción y no debe exponerse al usuario.
+         */
+        internal fun filterSavedQueues(queues: List<PlaybackQueue>): List<PlaybackQueue> =
+            queues.filter { it.id != PlaybackCoordinator.ACTIVE_QUEUE_ID }
     }
 }
