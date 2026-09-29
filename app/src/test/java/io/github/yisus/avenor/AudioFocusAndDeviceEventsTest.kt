@@ -103,7 +103,7 @@ class AudioFocusAndDeviceEventsTest {
     }
 
     @Test
-    fun `test 02 - AUTO_TRANSITION with crossfade ON applies fade in and smoothly restores 1_0f`() = runTest(testDispatcher) {
+    fun `test 02 - AUTO_TRANSITION with crossfade ON calls cancelAndReset and stays IDLE`() = runTest(testDispatcher) {
         val player = ExoPlayer.Builder(context).build()
         val crossfadeManager = DualPlayerCrossfadeManager(player, context)
         crossfadeManager.isCrossfadeEnabled = true
@@ -111,12 +111,6 @@ class AudioFocusAndDeviceEventsTest {
 
         val posInfo = createDummyPositionInfo("track_2")
         crossfadeManager.playerListener.onPositionDiscontinuity(posInfo, posInfo, Player.DISCONTINUITY_REASON_AUTO_TRANSITION)
-
-        assertEquals(TransitionState.FADING_IN, crossfadeManager.transitionState.value)
-        assertTrue(crossfadeManager.isCrossfading.value)
-
-        shadowOf(Looper.getMainLooper()).idle()
-        testDispatcher.scheduler.advanceTimeBy(5000)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(1.0f, player.volume, 0.001f)

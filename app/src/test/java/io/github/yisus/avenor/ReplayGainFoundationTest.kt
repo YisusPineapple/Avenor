@@ -375,6 +375,9 @@ class ReplayGainFoundationTest {
 
     @Before
     fun setup() {
+        org.robolectric.shadows.ShadowEnvironment.setExternalStorageState(
+            android.os.Environment.MEDIA_MOUNTED
+        )
         context = RuntimeEnvironment.getApplication()
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()

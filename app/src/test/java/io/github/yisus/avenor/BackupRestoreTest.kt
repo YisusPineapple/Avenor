@@ -285,13 +285,13 @@ class BackupRestoreTest {
         )
 
         assertEquals(1, export.backupFormatVersion)
-        assertEquals(20, export.roomSchemaVersion)
+        assertEquals(21, export.roomSchemaVersion)
         assertEquals(BackupManager.CURRENT_BACKUP_FORMAT_VERSION, export.backupFormatVersion)
         assertEquals(DATABASE_VERSION, export.roomSchemaVersion)
 
         val jsonString = BackupManager.jsonFormat.encodeToString(export)
         assertTrue(jsonString.contains("\"backupFormatVersion\":1"))
-        assertTrue(jsonString.contains("\"roomSchemaVersion\":20"))
+        assertTrue(jsonString.contains("\"roomSchemaVersion\":21"))
     }
 
     // --- TEST 8: Legacy song fields without extended columns receive defaults ---
@@ -549,7 +549,7 @@ class BackupRestoreTest {
         val valid = validation as BackupValidationResult.Valid
 
         assertEquals(1, valid.export.backupFormatVersion)
-        assertEquals(20, valid.export.roomSchemaVersion)
+        assertEquals(21, valid.export.roomSchemaVersion)
         assertEquals("SHA-256", valid.export.checksumAlgorithm)
         assertNotNull(valid.export.checksumSha256)
         assertEquals(64, valid.export.checksumSha256?.length)
