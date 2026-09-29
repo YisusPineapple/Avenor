@@ -196,13 +196,14 @@ class DomainContractsAndFileSourceTest {
         // On JVM unit test without device MediaCodecList, isDeviceVerified is false and isHardwareAccelerated is not hardcoded to true
         assertFalse((aacRes as DecoderResolution.PlatformMediaCodec).isDeviceVerified)
 
+        // WavPack is a PLANNED_BACKEND: classified by resolve() but not bundled in the current build.
         val wavpackRes = DefaultDecoderResolver.resolve(AudioContainerType.WAVPACK, AudioCodecType.WAVPACK, 96000, 2, 24)
         assertTrue(wavpackRes is DecoderResolution.SoftwareDecoder)
-        assertTrue((wavpackRes as DecoderResolution.SoftwareDecoder).isBackendInstalled)
-        assertEquals(DecoderAvailabilityStatus.SUPPORTED_NOW, wavpackRes.availabilityStatus)
-        assertTrue(wavpackRes.isSupportedNow)
+        assertFalse((wavpackRes as DecoderResolution.SoftwareDecoder).isBackendInstalled)
+        assertEquals(DecoderAvailabilityStatus.PLANNED_BACKEND, wavpackRes.availabilityStatus)
+        assertFalse(wavpackRes.isSupportedNow)
 
-        // Productive resolution accepts SUPPORTED_NOW software backends (LIBWAVPACK, LIBALAC, LIBMAC_APE)
+        // Productive resolution must reject unbundled software backends as Unsupported.
         val wavpackProductive = DefaultDecoderResolver.resolveProductive(
             AudioContainerType.WAVPACK,
             AudioCodecType.WAVPACK,
@@ -210,8 +211,7 @@ class DomainContractsAndFileSourceTest {
             2,
             24
         )
-        assertTrue(wavpackProductive is DecoderResolution.SoftwareDecoder)
-        assertEquals(DecoderAvailabilityStatus.SUPPORTED_NOW, wavpackProductive.availabilityStatus)
+        assertTrue(wavpackProductive is DecoderResolution.Unsupported)
 
         val pcmRes = DefaultDecoderResolver.resolve(AudioContainerType.WAV, AudioCodecType.PCM_S16LE, 44100, 2, 16)
         assertEquals(DecoderResolution.PassthroughPcm(C.ENCODING_PCM_16BIT), pcmRes)

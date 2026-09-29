@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +48,7 @@ fun LyricsScreen(
     val isPlaying by playerViewModel.isPlaying.collectAsState()
     val currentSong by playerViewModel.currentSong.collectAsState()
     val lyrics by playerViewModel.currentLyrics.collectAsState()
+    val unsynced by playerViewModel.currentUnsyncedLyrics.collectAsState()
     val isLoadingLyrics by playerViewModel.isLoadingLyrics.collectAsState()
     val listState = rememberLazyListState()
 
@@ -78,6 +81,21 @@ fun LyricsScreen(
         if (isLoadingLyrics) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else if (shouldRenderUnsynced(lyrics.size, unsynced)) {
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 24.dp, vertical = 32.dp)
+            ) {
+                Text(
+                    text = unsynced.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight
+                )
             }
         } else if (lyrics.isEmpty()) {
             Box(
@@ -159,4 +177,8 @@ fun LyricsScreen(
         }
     }
 }
+
+internal fun shouldRenderUnsynced(syncedCount: Int, unsynced: String?): Boolean =
+    syncedCount == 0 && !unsynced.isNullOrBlank()
+
 

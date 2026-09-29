@@ -906,4 +906,154 @@ class DatabaseAndMigrationTest {
         writableDb.close()
         dbFile.delete()
     }
+
+    @Test
+    fun testMigration20To21AddsAvailabilityAndMapsExcludedSongs() {
+        val context = RuntimeEnvironment.getApplication()
+        val dbFile = context.getDatabasePath("test_migration_20_21.db")
+        if (dbFile.exists()) dbFile.delete()
+
+        val helperConfig = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name("test_migration_20_21.db")
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(20) {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `songs` (
+                            `id` INTEGER NOT NULL,
+                            `uri` TEXT NOT NULL,
+                            `title` TEXT NOT NULL,
+                            `artist` TEXT NOT NULL,
+                            `album` TEXT NOT NULL,
+                            `durationMs` INTEGER NOT NULL,
+                            `albumArtUri` TEXT,
+                            `bitDepth` INTEGER NOT NULL,
+                            `sampleRate` INTEGER NOT NULL,
+                            `mimeType` TEXT NOT NULL,
+                            `fileExtension` TEXT NOT NULL,
+                            `codec` TEXT NOT NULL,
+                            `bitrate` INTEGER NOT NULL,
+                            `channels` INTEGER NOT NULL,
+                            `fileSize` INTEGER NOT NULL,
+                            `dateModified` INTEGER NOT NULL,
+                            `dateAdded` INTEGER NOT NULL,
+                            `trackNumber` INTEGER NOT NULL,
+                            `discNumber` INTEGER NOT NULL,
+                            `year` INTEGER NOT NULL,
+                            `genre` TEXT NOT NULL,
+                            `composer` TEXT NOT NULL,
+                            `albumArtist` TEXT NOT NULL,
+                            `sortTitle` TEXT NOT NULL,
+                            `comment` TEXT NOT NULL,
+                            `replayGainTrack` REAL,
+                            `replayGainAlbum` REAL,
+                            `artworkWidth` INTEGER NOT NULL,
+                            `artworkHeight` INTEGER NOT NULL,
+                            `artworkMimeType` TEXT NOT NULL,
+                            `isExcludedFromLibrary` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+
+                    db.execSQL(
+                        """
+                        INSERT INTO `songs` (
+                            `id`, `uri`, `title`, `artist`, `album`, `durationMs`,
+                            `bitDepth`, `sampleRate`, `mimeType`, `fileExtension`, `codec`,
+                            `bitrate`, `channels`, `fileSize`, `dateModified`, `dateAdded`,
+                            `trackNumber`, `discNumber`, `year`, `genre`, `composer`,
+                            `albumArtist`, `sortTitle`, `comment`, `artworkWidth`,
+                            `artworkHeight`, `artworkMimeType`, `isExcludedFromLibrary`
+                        ) VALUES (
+                            1001, 'content://media/1001', 'Active Song', 'Artist A', 'Album A', 200000,
+                            16, 44100, 'audio/flac', 'flac', 'FLAC',
+                            1000, 2, 10240000, 1700000000, 1700000000,
+                            1, 1, 2020, 'Rock', 'Composer A',
+                            'Artist A', 'Active Song', '', 500,
+                            500, 'image/jpeg', 0
+                        )
+                        """.trimIndent()
+                    )
+
+                    db.execSQL(
+                        """
+                        INSERT INTO `songs` (
+                            `id`, `uri`, `title`, `artist`, `album`, `durationMs`,
+                            `bitDepth`, `sampleRate`, `mimeType`, `fileExtension`, `codec`,
+                            `bitrate`, `channels`, `fileSize`, `dateModified`, `dateAdded`,
+                            `trackNumber`, `discNumber`, `year`, `genre`, `composer`,
+                            `albumArtist`, `sortTitle`, `comment`, `artworkWidth`,
+                            `artworkHeight`, `artworkMimeType`, `isExcludedFromLibrary`
+                        ) VALUES (
+                            1002, 'content://media/1002', 'Excluded Song', 'Artist B', 'Album B', 210000,
+                            16, 44100, 'audio/mpeg', 'mp3', 'MP3',
+                            320, 2, 8192000, 1700000100, 1700000100,
+                            2, 1, 2021, 'Pop', 'Composer B',
+                            'Artist B', 'Excluded Song', '', 500,
+                            500, 'image/jpeg', 1
+                        )
+                        """.trimIndent()
+                    )
+                }
+
+                override fun onUpgrade(
+                    db: androidx.sqlite.db.SupportSQLiteDatabase,
+                    oldVersion: Int,
+                    newVersion: Int
+                ) {}
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(helperConfig)
+        val writableDb = helper.writableDatabase
+
+        // Execute MIGRATION_20_21
+        MIGRATION_20_21.migrate(writableDb)
+
+        // Assert 1: PRAGMA table_info('songs') contains column availability
+        val tableInfoCursor = writableDb.query("PRAGMA table_info('songs')")
+        val columnNames = mutableListOf<String>()
+        while (tableInfoCursor.moveToNext()) {
+            columnNames.add(tableInfoCursor.getString(1))
+        }
+        tableInfoCursor.close()
+        assertTrue(
+            "Column availability must exist in songs table",
+            columnNames.contains("availability")
+        )
+
+        // Assert 2: row 1001 has availability = 0 and isExcludedFromLibrary = 0
+        val cursor1001 = writableDb.query(
+            "SELECT availability, isExcludedFromLibrary FROM songs WHERE id = 1001"
+        )
+        assertTrue("Row 1001 must exist", cursor1001.moveToFirst())
+        assertEquals(SongAvailability.AVAILABLE, cursor1001.getInt(0))
+        assertEquals(0, cursor1001.getInt(1))
+        cursor1001.close()
+
+        // Assert 3: row 1002 has availability = 2 and isExcludedFromLibrary = 1
+        val cursor1002 = writableDb.query(
+            "SELECT availability, isExcludedFromLibrary FROM songs WHERE id = 1002"
+        )
+        assertTrue("Row 1002 must exist", cursor1002.moveToFirst())
+        assertEquals(SongAvailability.EXCLUDED, cursor1002.getInt(0))
+        assertEquals(1, cursor1002.getInt(1))
+        cursor1002.close()
+
+        // Assert 4: PRAGMA index_list('songs') contains index_songs_availability
+        val indexCursor = writableDb.query("PRAGMA index_list('songs')")
+        val indexNames = mutableListOf<String>()
+        while (indexCursor.moveToNext()) {
+            indexNames.add(indexCursor.getString(1))
+        }
+        indexCursor.close()
+        assertTrue(
+            "Index on availability must exist",
+            indexNames.contains("index_songs_availability")
+        )
+
+        writableDb.close()
+        dbFile.delete()
+    }
 }

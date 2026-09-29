@@ -160,6 +160,9 @@ class LibraryScannerP13DTest {
 
     @Before
     fun setup() {
+        org.robolectric.shadows.ShadowEnvironment.setExternalStorageState(
+            android.os.Environment.MEDIA_MOUNTED
+        )
         context = RuntimeEnvironment.getApplication()
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -316,7 +319,7 @@ class LibraryScannerP13DTest {
         assertEquals("Total extractor calls must strictly equal 70", 70, extractor.totalCalls.get())
         assertEquals("newCount must be 40", 40, progress.newCount)
         assertEquals("modifiedCount must be 30", 30, progress.modifiedCount)
-        assertEquals("deletedCount must be 10", 10, progress.deletedCount)
+        assertEquals("First absence marks MISSING, does not delete", 0, progress.deletedCount)
         assertEquals("errorCount must be 0", 0, progress.errorCount)
         assertFalse("Scanner progress isScanning must be false", progress.isScanning)
 
@@ -324,14 +327,17 @@ class LibraryScannerP13DTest {
         val expectedExtracted = expectedNewIds + expectedModifiedIds
         assertEquals("Extracted IDs must match NEW + MODIFIED set exactly", expectedExtracted, extractor.extractedIds)
 
-        // Physical deleted songs must be removed from Room
+        // Physical deleted songs must be marked MISSING on first absence
         for (delId in expectedDeletedIds) {
-            assertNull("Physically deleted song must not exist in Room", dao.getSongById(delId))
+            val s = dao.getSongById(delId)
+            assertNotNull("Absent song must remain in Room as MISSING", s)
+            assertEquals(SongAvailability.MISSING, s!!.availability)
+            assertTrue(s.isExcludedFromLibrary)
         }
 
         // Excluded songs must remain in Room with isExcludedFromLibrary = true
         val roomHeaders = dao.getAllSongHeaders().associateBy { it.id }
-        assertEquals("Room should have 9900 unchanged + 40 new + 30 mod + 20 excl = 9990", 9990, roomHeaders.size)
+        assertEquals("Room retains all 10000 rows (10 now MISSING)", 10000, roomHeaders.size)
     }
 
     // =========================================================================
@@ -525,8 +531,15 @@ class LibraryScannerP13DTest {
         // 5. Physical deletion: Now remove from MediaStore completely
         P13DFakeMediaProvider.records.clear()
         val progress3 = scanner.scan()
-        assertEquals("physicalDeleted must report 1 deleted song", 1, progress3.deletedCount)
-        assertNull("Song must now be deleted from Room", dao.getSongById(songId))
+        assertEquals(
+            "Degraded state (empty MediaStore, populated Room) marks MISSING, does not delete",
+            0,
+            progress3.deletedCount
+        )
+        val missing = dao.getSongById(songId)
+        assertNotNull("Song must remain in Room as MISSING", missing)
+        assertEquals(SongAvailability.MISSING, missing!!.availability)
+        assertTrue(missing.isExcludedFromLibrary)
     }
 
     // =========================================================================
@@ -607,15 +620,24 @@ class LibraryScannerP13DTest {
         assertFalse("SCAN 5: song3 marked isExcludedFromLibrary = false", s3ReIncluded!!.isExcludedFromLibrary)
 
         // -------------------------------------------------------------
-        // SCAN 6: song1 PHYSICALLY DELETED from MediaStore
+        // SCAN 6: song1 absent from MediaStore (first absence → MISSING, not deleted)
         // -------------------------------------------------------------
         extractor.totalCalls.set(0)
         P13DFakeMediaProvider.records.removeAll { it.getAsLong(MediaStore.Audio.Media._ID) == song1 }
 
         val scan6 = scanner.scan()
-        assertEquals("SCAN 6: deletedCount = 1", 1, scan6.deletedCount)
-        assertEquals("SCAN 6: extractor calls = 0", 0, extractor.totalCalls.get())
-        assertNull("SCAN 6: song1 physically deleted from Room", dao.getSongById(song1))
-        assertEquals("SCAN 6: Room now has 2 songs remaining (song2 and song3)", 2, dao.getAllSongHeaders().size)
+        assertEquals("SCAN 6: first absence does not delete", 0, scan6.deletedCount)
+        val s1Missing = dao.getSongById(song1)
+        assertNotNull("SCAN 6: song1 still in Room as MISSING", s1Missing)
+        assertEquals(SongAvailability.MISSING, s1Missing!!.availability)
+
+        // -------------------------------------------------------------
+        // SCAN 7: song1 absent again (second consecutive absence → DELETE)
+        // -------------------------------------------------------------
+        extractor.totalCalls.set(0)
+        val scan7 = scanner.scan()
+        assertEquals("SCAN 7: second consecutive absence deletes", 1, scan7.deletedCount)
+        assertNull("SCAN 7: song1 deleted from Room", dao.getSongById(song1))
+        assertEquals("SCAN 7: Room now has 2 songs remaining (song2 and song3)", 2, dao.getAllSongHeaders().size)
     }
 }

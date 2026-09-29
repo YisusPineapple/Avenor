@@ -20,6 +20,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Estado de disponibilidad de una canción en la biblioteca local.
+ *
+ * - AVAILABLE (0): en MediaStore sin regla de exclusión activa.
+ * - MISSING   (1): ausente en el último escaneo sano, esperando segunda confirmación.
+ * - EXCLUDED  (2): en MediaStore pero matchea una regla de exclusión.
+ *
+ * Se mantiene sincronizado `isExcludedFromLibrary = (availability != AVAILABLE)` para que
+ * las queries DAO que filtran por `isExcludedFromLibrary = 0` sigan funcionando sin cambios.
+ */
+object SongAvailability {
+    const val AVAILABLE = 0
+    const val MISSING = 1
+    const val EXCLUDED = 2
+}
+
 @Entity(
     tableName = "songs",
     indices = [
@@ -29,7 +45,8 @@ import kotlinx.coroutines.flow.Flow
         Index("genre"),
         Index("dateAdded"),
         Index(value = ["artist", "album"]),
-        Index("isExcludedFromLibrary")
+        Index("isExcludedFromLibrary"),
+        Index("availability")
     ]
 )
 @Serializable
@@ -64,14 +81,16 @@ data class Song(
     val artworkWidth: Int = 0,
     val artworkHeight: Int = 0,
     val artworkMimeType: String = "",
-    val isExcludedFromLibrary: Boolean = false
+    val isExcludedFromLibrary: Boolean = false,
+    val availability: Int = SongAvailability.AVAILABLE
 )
 
 data class SongHeader(
     val id: Long,
     val dateModified: Long,
     val fileSize: Long,
-    val isExcludedFromLibrary: Boolean = false
+    val isExcludedFromLibrary: Boolean = false,
+    val availability: Int = SongAvailability.AVAILABLE
 )
 
 data class PlaybackSongItem(
@@ -282,7 +301,7 @@ interface MusicDao {
     @Query("SELECT * FROM songs WHERE id IN (:ids)")
     suspend fun getSongsByIds(ids: List<Long>): List<Song>
 
-    @Query("SELECT id, dateModified, fileSize, isExcludedFromLibrary FROM songs")
+    @Query("SELECT id, dateModified, fileSize, isExcludedFromLibrary, availability FROM songs")
     suspend fun getAllSongHeaders(): List<SongHeader>
 
     @Query("DELETE FROM songs WHERE id IN (:ids)")
@@ -290,6 +309,9 @@ interface MusicDao {
 
     @Query("UPDATE songs SET isExcludedFromLibrary = :isExcluded WHERE id IN (:ids)")
     suspend fun updateSongsExcludedStatus(ids: List<Long>, isExcluded: Boolean)
+
+    @Query("UPDATE songs SET availability = :availability, isExcludedFromLibrary = :isExcluded WHERE id IN (:ids)")
+    suspend fun updateSongsAvailability(ids: List<Long>, availability: Int, isExcluded: Boolean)
 
     @Query("UPDATE songs SET isExcludedFromLibrary = :isExcluded WHERE id = :id")
     suspend fun updateSongExcludedStatus(id: Long, isExcluded: Boolean)
@@ -769,7 +791,15 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
     }
 }
 
-const val DATABASE_VERSION = 20
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `songs` ADD COLUMN `availability` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE `songs` SET `availability` = 2 WHERE `isExcludedFromLibrary` = 1")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_availability` ON `songs` (`availability`)")
+    }
+}
+
+const val DATABASE_VERSION = 21
 
 @Database(
     entities = [
@@ -811,7 +841,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_16_17,
                         MIGRATION_17_18,
                         MIGRATION_18_19,
-                        MIGRATION_19_20
+                        MIGRATION_19_20,
+                        MIGRATION_20_21
                     )
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

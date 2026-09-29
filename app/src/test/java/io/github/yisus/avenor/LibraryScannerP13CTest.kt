@@ -131,6 +131,9 @@ class LibraryScannerP13CTest {
 
     @Before
     fun setup() {
+        org.robolectric.shadows.ShadowEnvironment.setExternalStorageState(
+            android.os.Environment.MEDIA_MOUNTED
+        )
         context = RuntimeEnvironment.getApplication()
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -331,21 +334,25 @@ class LibraryScannerP13CTest {
     // physicalDeleted; sigue la eliminación normal.
     // =========================================================================
     @Test
-    fun test5_physicallyDeletedSongDeletesNormallyFromRoom() = runTest(testDispatcher) {
+    fun test5_songAbsentFromMediaStore_marksMissingNotDeletes() = runTest(testDispatcher) {
         val songId = 501L
-        // Song in Room
-        val existingSong = createSampleSong(id = songId, title = "Deleted File Song")
+        val existingSong = createSampleSong(id = songId, title = "Absent File Song")
         dao.insertSongs(listOf(existingSong))
 
-        // MediaStore is empty (song physically removed from disk)
+        // MediaStore is empty (simulating a transient provider failure), Room is populated.
+        // This is the degraded-state path: gate 2 marks all as MISSING without deleting.
         val extractor = CountingMetadataExtractor()
         val scanner = LibraryScanner(context, dao, metadataExtractor = extractor)
 
         val progress = scanner.scan()
 
-        assertEquals(1, progress.deletedCount)
-        assertEquals("Extractor must NOT be called for physical deleted song", 0, extractor.callCount.get())
-        assertNull("Song must be deleted from Room", dao.getSongById(songId))
+        assertEquals(0, progress.deletedCount)
+        assertEquals(0, extractor.callCount.get())
+
+        val updated = dao.getSongById(songId)
+        assertNotNull("Song must remain in Room as MISSING, not deleted", updated)
+        assertEquals(SongAvailability.MISSING, updated!!.availability)
+        assertTrue(updated.isExcludedFromLibrary)
     }
 
     // =========================================================================

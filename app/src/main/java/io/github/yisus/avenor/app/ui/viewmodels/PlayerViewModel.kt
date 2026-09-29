@@ -89,6 +89,9 @@ class PlayerViewModel @Inject constructor(
     private val _currentLyrics = MutableStateFlow<List<LyricLine>>(emptyList())
     val currentLyrics: StateFlow<List<LyricLine>> = _currentLyrics.asStateFlow()
 
+    private val _currentUnsyncedLyrics = MutableStateFlow<String?>(null)
+    val currentUnsyncedLyrics: StateFlow<String?> = _currentUnsyncedLyrics.asStateFlow()
+
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
@@ -446,6 +449,7 @@ class PlayerViewModel @Inject constructor(
             _isLoadingLyrics.value = true
             val repo = LyricsRepository(context)
             _currentLyrics.value = repo.getLyricsForSong(song)
+            _currentUnsyncedLyrics.value = repo.getUnsyncedLyricsForSong(song)
             _isLoadingLyrics.value = false
         }
     }

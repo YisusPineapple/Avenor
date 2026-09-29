@@ -1,9 +1,10 @@
 package io.github.yisus.avenor.lyrics
 
 import android.content.Context
-import android.media.MediaMetadataRetriever
 import android.net.Uri
+import io.github.yisus.avenor.ExtendedMetadataExtractor
 import io.github.yisus.avenor.Song
+import io.github.yisus.avenor.metadata.SongLyricsBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -24,6 +25,10 @@ class LyricsRepository(private val context: Context) {
         }
 
         emptyList()
+    }
+
+    suspend fun getUnsyncedLyricsForSong(song: Song): String? = withContext(Dispatchers.IO) {
+        readEmbeddedLyricsBlock(song)?.unsyncedLyrics
     }
 
     private fun findSiblingLrcFile(song: Song): String? {
@@ -63,27 +68,22 @@ class LyricsRepository(private val context: Context) {
         return null
     }
 
-    private fun extractEmbeddedLyrics(song: Song): String? {
-        val retriever = MediaMetadataRetriever()
+    private fun readEmbeddedLyricsBlock(song: Song): SongLyricsBlock? {
         return try {
             val uri = Uri.parse(song.uri)
-            if (uri.scheme == "content" || uri.scheme == "file") {
-                retriever.setDataSource(context, uri)
-            } else {
-                retriever.setDataSource(song.uri)
-            }
-            // METADATA_KEY_TITLE, METADATA_KEY_AUTHOR, or check for generic embedded lyrics
-            // Note: MediaMetadataRetriever does not define a standard lyrics key in older APIs,
-            // but some vendors support key 1000 or custom fields. If null, safe return null.
-            null
+            val specs = ExtendedMetadataExtractor.extract(
+                context = context,
+                uri = uri,
+                filePath = null
+            )
+            specs.lyricsBlock
         } catch (e: Exception) {
             null
-        } finally {
-            try {
-                retriever.release()
-            } catch (e: Exception) {
-                // Ignore
-            }
         }
+    }
+
+    private fun extractEmbeddedLyrics(song: Song): String? {
+        val block = readEmbeddedLyricsBlock(song) ?: return null
+        return block.syncedLyricsLrc ?: block.unsyncedLyrics
     }
 }

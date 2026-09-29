@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -101,6 +102,13 @@ class LibraryScanner(
 
         try {
             ensureActive()
+            val externalState = Environment.getExternalStorageState()
+            if (externalState != Environment.MEDIA_MOUNTED) {
+                Log.w(TAG, "External storage not mounted ($externalState). Aborting scan without touching Room.")
+                val aborted = ScanProgress(isScanning = false)
+                _progress.value = aborted
+                return@withContext aborted
+            }
             val existingHeaders = dao.getAllSongHeaders().associateBy { it.id }
 
             // =========================================================================
@@ -159,42 +167,72 @@ class LibraryScanner(
 
             ensureActive()
 
+            if (allMediaStoreIds.isEmpty() && existingHeaders.isNotEmpty()) {
+                Log.w(TAG, "MediaStore empty with populated Room (degraded state). Marking all as MISSING.")
+                val allIds = existingHeaders.keys.toList()
+                allIds.chunked(500).forEach { batch ->
+                    ensureActive()
+                    dao.updateSongsAvailability(batch, SongAvailability.MISSING, isExcluded = true)
+                }
+                val degraded = ScanProgress(isScanning = false)
+                _progress.value = degraded
+                return@withContext degraded
+            }
+
             // =========================================================================
             // FASE 2 — CLASIFICACIÓN
             // =========================================================================
-            // 1. Identify PHYSICAL DELETED songs (in Room, but completely missing from MediaStore and not excluded)
-            val physicalDeletedIds = existingHeaders.keys.filter { it !in allMediaStoreIds && it !in excludedIds }
-            if (physicalDeletedIds.isNotEmpty()) {
-                physicalDeletedIds.chunked(500).forEach { batch ->
+
+            // 1. Canciones ausentes de MediaStore: borrar solo si ya estaban MISSING.
+            val absentIds = existingHeaders.keys.filter { it !in allMediaStoreIds }
+            val toDelete = mutableListOf<Long>()
+            val toMarkMissing = mutableListOf<Long>()
+            for (id in absentIds) {
+                ensureActive()
+                val previous = existingHeaders[id]?.availability ?: SongAvailability.AVAILABLE
+                if (previous == SongAvailability.MISSING) {
+                    toDelete.add(id)
+                } else {
+                    toMarkMissing.add(id)
+                }
+            }
+            if (toDelete.isNotEmpty()) {
+                toDelete.chunked(500).forEach { batch ->
                     ensureActive()
                     dao.deleteSongsByIds(batch)
                 }
-                deletedCount = physicalDeletedIds.size
+                deletedCount = toDelete.size
+            }
+            if (toMarkMissing.isNotEmpty()) {
+                toMarkMissing.chunked(500).forEach { batch ->
+                    ensureActive()
+                    dao.updateSongsAvailability(batch, SongAvailability.MISSING, isExcluded = true)
+                }
             }
 
-            // 2. Identify EXCLUDED songs (in Room, present in MediaStore, but matching excluded folder or .nomedia)
-            val toMarkExcluded = existingHeaders.keys.filter {
-                it in excludedIds && !(existingHeaders[it]?.isExcludedFromLibrary ?: false)
+            // 2. Canciones presentes pero excluidas por regla activa.
+            val toMarkExcluded = existingHeaders.keys.filter { id ->
+                id in excludedIds && existingHeaders[id]?.availability != SongAvailability.EXCLUDED
             }
             if (toMarkExcluded.isNotEmpty()) {
                 toMarkExcluded.chunked(500).forEach { batch ->
                     ensureActive()
-                    dao.updateSongsExcludedStatus(batch, true)
+                    dao.updateSongsAvailability(batch, SongAvailability.EXCLUDED, isExcluded = true)
                 }
             }
 
-            // 3. Identify RE-INCLUDED songs (were previously marked excluded in Room, but now active)
-            val toMarkReIncluded = activeMediaStoreHeaders.keys.filter {
-                existingHeaders[it]?.isExcludedFromLibrary == true
+            // 3. Canciones presentes y no excluidas previamente ocultas (reactivación).
+            val toMarkAvailable = existingHeaders.keys.filter { id ->
+                id in activeMediaStoreHeaders && existingHeaders[id]?.availability != SongAvailability.AVAILABLE
             }
-            if (toMarkReIncluded.isNotEmpty()) {
-                toMarkReIncluded.chunked(500).forEach { batch ->
+            if (toMarkAvailable.isNotEmpty()) {
+                toMarkAvailable.chunked(500).forEach { batch ->
                     ensureActive()
-                    dao.updateSongsExcludedStatus(batch, false)
+                    dao.updateSongsAvailability(batch, SongAvailability.AVAILABLE, isExcluded = false)
                 }
             }
 
-            // 4. Identify NEW and MODIFIED songs to process
+            // 4. Identificar NEW y MODIFIED (metadata pesada a procesar).
             val songsToProcess = mutableListOf<Long>()
             for ((id, msHeader) in activeMediaStoreHeaders) {
                 val existing = existingHeaders[id]
