@@ -110,6 +110,7 @@ fun AvenorAppRoot(
         AuroraBackground(performanceMode = pMode) {
             Scaffold(
                 containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground,
                 topBar = {
                     TopAppBar(
                         title = {

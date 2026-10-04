@@ -183,7 +183,8 @@ fun LibraryScreen(
                                             showAddToPlaylistDialog = false
                                         },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 ) {
                                     Row(
@@ -375,7 +376,8 @@ fun LibraryScreen(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
@@ -545,7 +547,8 @@ fun LibraryScreen(
                                                 .size(130.dp)
                                                 .clickable { onNavigateToPlaylist(Screen.PlaylistDetails(playlist.id, playlist.name)) },
                                             colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         ) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -570,7 +573,8 @@ fun LibraryScreen(
                                                 .width(150.dp)
                                                 .clickable { viewModel.playSongList(favoriteSongs, index) },
                                             colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         ) {
                                             Column(modifier = Modifier.padding(12.dp)) {
@@ -606,7 +610,8 @@ fun LibraryScreen(
                                                 .width(150.dp)
                                                 .clickable { viewModel.playSongList(history, index) },
                                             colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                                contentColor = MaterialTheme.colorScheme.onSurface
                                             )
                                         ) {
                                             Column(modifier = Modifier.padding(12.dp)) {
