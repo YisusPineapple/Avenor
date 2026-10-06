@@ -179,4 +179,19 @@ class PlaybackCoordinatorTest {
         assertEquals(sampleSongs[2].id, dbSongs[1].id)
         assertEquals(sampleSongs[0].id, dbSongs[2].id)
     }
+
+    @Test
+    fun testSaveFullQueue_withLargeQueue_doesNotBlockCaller() = runTest(testDispatcher) {
+        val coordinator = PlaybackCoordinator(dao, testScope)
+        val largeList = (1L..500L).map { id ->
+            Song(
+                id = id, uri = "content://audio/$id", title = "Track $id",
+                artist = "Artist", album = "Album", durationMs = 180_000L,
+                albumArtUri = null
+            )
+        }
+        // Should return before the deferred save completes, no blocking
+        coordinator.saveFullQueue(largeList, 0, 0L, true)
+        assertEquals(500, coordinator.playbackState.value.queue.size)
+    }
 }

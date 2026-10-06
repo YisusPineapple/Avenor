@@ -1,6 +1,7 @@
 package io.github.yisus.avenor.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,19 +33,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.yisus.avenor.app.ui.viewmodels.PlayerViewModel
 
 @Composable
-fun OptimizedVerticalSlider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.graphicsLayer { rotationZ = 270f; transformOrigin = TransformOrigin(0f, 0f) }
-    )
+fun OptimizedVerticalSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .width(220.dp)
+                .rotate(-90f)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

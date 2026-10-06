@@ -216,8 +216,9 @@ class LibraryViewModel @Inject constructor(
         mediaController?.setMediaItems(mediaItems, validIndex, 0L)
         mediaController?.prepare()
         mediaController?.play()
+        // Defer queue persistence to background so MediaController starts immediately.
         val coordState = playbackCoordinator.playbackState.value
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             playbackCoordinator.saveFullQueue(
                 songs = songList,
                 currentIndex = validIndex,

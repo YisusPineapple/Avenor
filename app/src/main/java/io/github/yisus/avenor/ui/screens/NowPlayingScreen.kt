@@ -1,5 +1,6 @@
 package io.github.yisus.avenor.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +75,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -147,6 +150,8 @@ fun NowPlayingScreen(
 
     val style = appSettings?.nowPlayingStyle ?: "CLASSIC"
     val uiDensity = appSettings?.uiDensity ?: "RELAXED"
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     
     Box(modifier = Modifier.fillMaxSize()) {
         // Background for Apple Music style
@@ -159,166 +164,321 @@ fun NowPlayingScreen(
                 colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.5f), BlendMode.Darken)
             )
         }
-        
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            // Artwork
-            val artShape = when(style) {
-                "EXPRESSIVE" -> RoundedCornerShape(16.dp)
-                "APPLE_MUSIC" -> RoundedCornerShape(12.dp)
-                else -> RoundedCornerShape(40.dp)
-            }
-            
-            val artModifier = when(style) {
-                "EXPRESSIVE" -> Modifier.fillMaxWidth().aspectRatio(1f)
-                "APPLE_MUSIC" -> Modifier.fillMaxWidth(0.85f).aspectRatio(1f)
-                else -> Modifier.fillMaxWidth().aspectRatio(1f)
-            }
-            
-            Card(
-                modifier = artModifier,
-                shape = artShape,
-                elevation = CardDefaults.cardElevation(defaultElevation = if (style == "APPLE_MUSIC") 24.dp else 16.dp)
-            ) {
-                AvenorAsyncImage(
-                    model = currentSong?.albumArtUri,
-                    resolution = appSettings?.albumArtResolution ?: "HIGH",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    contentDescription = "Album Art"
-                )
-            }
 
-            // Text info
+        val artShape = when(style) {
+            "EXPRESSIVE" -> RoundedCornerShape(16.dp)
+            "APPLE_MUSIC" -> RoundedCornerShape(12.dp)
+            else -> RoundedCornerShape(40.dp)
+        }
+        
+        if (isLandscape) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    // AutoMix Indicator
-                    AnimatedVisibility(visible = isCrossfading) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = automixAlpha),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            ) {
-                                Icon(Icons.Default.GraphicEq, contentDescription = "AutoMix Active", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("AutoMix", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    Text(currentSong?.title ?: "Unknown Title", style = if(style == "APPLE_MUSIC") MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                    val artists = remember(currentSong?.artist) {
-                        CreditSplitter.splitArtists(currentSong?.artist ?: "").ifEmpty { listOf("Unknown Artist") }
-                    }
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .weight(0.45f)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxHeight(0.85f)
+                            .aspectRatio(1f),
+                        shape = artShape,
+                        elevation = CardDefaults.cardElevation(defaultElevation = if (style == "APPLE_MUSIC") 24.dp else 16.dp)
                     ) {
-                        items(artists) { artistName ->
-                            AssistChip(
-                                onClick = {},
-                                label = {
-                                    Text(
-                                        text = artistName,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        maxLines = 1
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    labelColor = if (style == "APPLE_MUSIC") {
-                                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
-                                )
-                            )
-                        }
+                        AvenorAsyncImage(
+                            model = currentSong?.albumArtUri,
+                            resolution = appSettings?.albumArtResolution ?: "HIGH",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                            contentDescription = "Album Art"
+                        )
                     }
                 }
-                IconButton(onClick = { currentSong?.let { viewModel.toggleFavorite(it.id) } }) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
-                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp)
+
+                Spacer(modifier = Modifier.width(24.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(0.55f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    TrackTitleBlock(
+                        currentSong = currentSong,
+                        style = style,
+                        isCrossfading = isCrossfading,
+                        automixAlpha = automixAlpha,
+                        isFavorite = isFavorite,
+                        onToggleFavorite = { currentSong?.let { viewModel.toggleFavorite(it.id) } }
+                    )
+
+                    if (uiDensity == "PRO") {
+                        TechnicalSpecsPanel(
+                            currentSong = currentSong,
+                            isPlaying = isPlaying,
+                            currentPosition = currentPosition
+                        )
+                    }
+
+                    ProgressBlock(
+                        currentSong = currentSong,
+                        currentPosition = currentPosition,
+                        style = style,
+                        onSeek = { viewModel.seekTo(it) }
+                    )
+
+                    ControlsBlock(
+                        isPlaying = isPlaying,
+                        isShuffleEnabled = isShuffleEnabled,
+                        repeatMode = repeatMode,
+                        style = style,
+                        onToggleShuffle = { viewModel.toggleShuffle() },
+                        onSkipToPrevious = { viewModel.skipToPrevious() },
+                        onTogglePlayPause = { viewModel.togglePlayPause() },
+                        onSkipToNext = { viewModel.skipToNext() },
+                        onToggleRepeat = { viewModel.toggleRepeat() }
+                    )
+
+                    BottomActionsBlock(
+                        isSleepTimerActive = isSleepTimerActive,
+                        onNavigateToQueue = onNavigateToQueue,
+                        onShowSleepTimer = { showSleepTimerDialog = true },
+                        onNavigateToEq = onNavigateToEq
                     )
                 }
             }
-
-            if (uiDensity == "PRO") {
-                TechnicalSpecsPanel(
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    currentPosition = currentPosition
-                )
-            }
-
-            // Progress
-            Column {
-                val progress = if (currentSong?.durationMs != null && currentSong!!.durationMs > 0) { currentPosition.toFloat() / currentSong!!.durationMs.toFloat() } else 0f
-                Slider(
-                    value = progress,
-                    onValueChange = { viewModel.seekTo((it * (currentSong?.durationMs ?: 0)).toLong()) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = if(style == "EXPRESSIVE") SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.secondary, activeTrackColor = MaterialTheme.colorScheme.secondary) else SliderDefaults.colors()
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatMs(currentPosition), style = MaterialTheme.typography.labelMedium)
-                    Text(formatMs(currentSong?.durationMs ?: 0), style = MaterialTheme.typography.labelMedium)
-                }
-            }
-
-            // Controls
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.toggleShuffle() }) {
-                    Icon(Icons.Default.Shuffle, contentDescription = "Shuffle", tint = if (isShuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                }
-                IconButton(onClick = { viewModel.skipToPrevious() }) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(48.dp))
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                val artModifier = when(style) {
+                    "EXPRESSIVE" -> Modifier.fillMaxWidth().aspectRatio(1f)
+                    "APPLE_MUSIC" -> Modifier.fillMaxWidth(0.85f).aspectRatio(1f)
+                    else -> Modifier.fillMaxWidth().aspectRatio(1f)
                 }
                 
-                if (style == "EXPRESSIVE") {
-                    FilledIconButton(onClick = { viewModel.togglePlayPause() }, modifier = Modifier.size(80.dp), shape = RoundedCornerShape(24.dp)) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", modifier = Modifier.size(48.dp))
-                    }
-                } else {
-                    FloatingActionButton(onClick = { viewModel.togglePlayPause() }, modifier = Modifier.size(80.dp), shape = CircleShape) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", modifier = Modifier.size(48.dp))
-                    }
+                Card(
+                    modifier = artModifier,
+                    shape = artShape,
+                    elevation = CardDefaults.cardElevation(defaultElevation = if (style == "APPLE_MUSIC") 24.dp else 16.dp)
+                ) {
+                    AvenorAsyncImage(
+                        model = currentSong?.albumArtUri,
+                        resolution = appSettings?.albumArtResolution ?: "HIGH",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        contentDescription = "Album Art"
+                    )
                 }
 
-                IconButton(onClick = { viewModel.skipToNext() }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(48.dp))
+                TrackTitleBlock(
+                    currentSong = currentSong,
+                    style = style,
+                    isCrossfading = isCrossfading,
+                    automixAlpha = automixAlpha,
+                    isFavorite = isFavorite,
+                    onToggleFavorite = { currentSong?.let { viewModel.toggleFavorite(it.id) } }
+                )
+
+                if (uiDensity == "PRO") {
+                    TechnicalSpecsPanel(
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        currentPosition = currentPosition
+                    )
                 }
-                IconButton(onClick = { viewModel.toggleRepeat() }) {
-                    val repeatIcon = when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> Icons.Default.RepeatOne
-                        Player.REPEAT_MODE_ALL -> Icons.Default.Repeat
-                        else -> Icons.Default.Repeat
-                    }
-                    val tint = if (repeatMode == Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary
-                    Icon(repeatIcon, contentDescription = "Repeat", tint = tint)
-                }
-            }
-            
-            // Bottom Actions
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = { onNavigateToQueue() }) { Icon(Icons.Default.QueueMusic, contentDescription = "Queue") }
-                IconButton(onClick = { showSleepTimerDialog = true }) { Icon(Icons.Default.Timer, contentDescription = "Sleep Timer", tint = if (isSleepTimerActive) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
-                IconButton(onClick = { onNavigateToEq() }) { Icon(Icons.Default.Equalizer, contentDescription = "EQ") }
+
+                ProgressBlock(
+                    currentSong = currentSong,
+                    currentPosition = currentPosition,
+                    style = style,
+                    onSeek = { viewModel.seekTo(it) }
+                )
+
+                ControlsBlock(
+                    isPlaying = isPlaying,
+                    isShuffleEnabled = isShuffleEnabled,
+                    repeatMode = repeatMode,
+                    style = style,
+                    onToggleShuffle = { viewModel.toggleShuffle() },
+                    onSkipToPrevious = { viewModel.skipToPrevious() },
+                    onTogglePlayPause = { viewModel.togglePlayPause() },
+                    onSkipToNext = { viewModel.skipToNext() },
+                    onToggleRepeat = { viewModel.toggleRepeat() }
+                )
+
+                BottomActionsBlock(
+                    isSleepTimerActive = isSleepTimerActive,
+                    onNavigateToQueue = onNavigateToQueue,
+                    onShowSleepTimer = { showSleepTimerDialog = true },
+                    onNavigateToEq = onNavigateToEq
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun TrackTitleBlock(
+    currentSong: Song?,
+    style: String,
+    isCrossfading: Boolean,
+    automixAlpha: Float,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            // AutoMix Indicator
+            AnimatedVisibility(visible = isCrossfading) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = automixAlpha),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.GraphicEq, contentDescription = "AutoMix Active", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("AutoMix", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Text(currentSong?.title ?: "Unknown Title", style = if(style == "APPLE_MUSIC") MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+            val artists = remember(currentSong?.artist) {
+                CreditSplitter.splitArtists(currentSong?.artist ?: "").ifEmpty { listOf("Unknown Artist") }
+            }
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items(artists) { artistName ->
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                text = artistName,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            labelColor = if (style == "APPLE_MUSIC") {
+                                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    )
+                }
+            }
+        }
+        IconButton(onClick = onToggleFavorite) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProgressBlock(
+    currentSong: Song?,
+    currentPosition: Long,
+    style: String,
+    onSeek: (Long) -> Unit
+) {
+    Column {
+        val progress = if (currentSong?.durationMs != null && currentSong.durationMs > 0) { currentPosition.toFloat() / currentSong.durationMs.toFloat() } else 0f
+        Slider(
+            value = progress,
+            onValueChange = { onSeek((it * (currentSong?.durationMs ?: 0)).toLong()) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = if(style == "EXPRESSIVE") SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.secondary, activeTrackColor = MaterialTheme.colorScheme.secondary) else SliderDefaults.colors()
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatMs(currentPosition), style = MaterialTheme.typography.labelMedium)
+            Text(formatMs(currentSong?.durationMs ?: 0), style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun ControlsBlock(
+    isPlaying: Boolean,
+    isShuffleEnabled: Boolean,
+    repeatMode: Int,
+    style: String,
+    onToggleShuffle: () -> Unit,
+    onSkipToPrevious: () -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onSkipToNext: () -> Unit,
+    onToggleRepeat: () -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onToggleShuffle) {
+            Icon(Icons.Default.Shuffle, contentDescription = "Shuffle", tint = if (isShuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+        }
+        IconButton(onClick = onSkipToPrevious) {
+            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(48.dp))
+        }
+        
+        if (style == "EXPRESSIVE") {
+            FilledIconButton(onClick = onTogglePlayPause, modifier = Modifier.size(80.dp), shape = RoundedCornerShape(24.dp)) {
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", modifier = Modifier.size(48.dp))
+            }
+        } else {
+            FloatingActionButton(onClick = onTogglePlayPause, modifier = Modifier.size(80.dp), shape = CircleShape) {
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", modifier = Modifier.size(48.dp))
+            }
+        }
+
+        IconButton(onClick = onSkipToNext) {
+            Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(48.dp))
+        }
+        IconButton(onClick = onToggleRepeat) {
+            val repeatIcon = when (repeatMode) {
+                Player.REPEAT_MODE_ONE -> Icons.Default.RepeatOne
+                Player.REPEAT_MODE_ALL -> Icons.Default.Repeat
+                else -> Icons.Default.Repeat
+            }
+            val tint = if (repeatMode == Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary
+            Icon(repeatIcon, contentDescription = "Repeat", tint = tint)
+        }
+    }
+}
+
+@Composable
+private fun BottomActionsBlock(
+    isSleepTimerActive: Boolean,
+    onNavigateToQueue: () -> Unit,
+    onShowSleepTimer: () -> Unit,
+    onNavigateToEq: () -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        IconButton(onClick = onNavigateToQueue) { Icon(Icons.Default.QueueMusic, contentDescription = "Queue") }
+        IconButton(onClick = onShowSleepTimer) { Icon(Icons.Default.Timer, contentDescription = "Sleep Timer", tint = if (isSleepTimerActive) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
+        IconButton(onClick = onNavigateToEq) { Icon(Icons.Default.Equalizer, contentDescription = "EQ") }
     }
 }
 

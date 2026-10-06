@@ -27,9 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -341,18 +338,15 @@ fun LibraryScreen(
             }
         } else {
             val windowClass = ResponsiveGridManager.getWindowSizeClass(LocalConfiguration.current.screenWidthDp.dp)
-            val columns = ResponsiveGridManager.getGridCells(windowClass)
             val paddingValues = ResponsiveGridManager.getPadding(windowClass)
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
+            LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(top = paddingValues.calculateTopPadding(), bottom = 80.dp),
                 modifier = Modifier.testTag("library_song_list")
             ) {
                 // 1. Search Bar & Scan Status
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = searchQuery,
@@ -409,7 +403,7 @@ fun LibraryScreen(
                 }
 
                 if (searchQuery.isBlank() && dailyMix.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Text("Daily Mix For You", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
                             items(dailyMix.size) { index ->
@@ -448,7 +442,7 @@ fun LibraryScreen(
                 }
 
                 if (searchQuery.isBlank() && heavyRotation.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Text("En Bucle (Últimos 7 días)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
                             items(heavyRotation.size) { index ->
@@ -487,7 +481,7 @@ fun LibraryScreen(
                 }
 
                 if (searchQuery.isBlank() && forgottenGems.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Text("Joyas Olvidadas", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
                             items(forgottenGems.size) { index ->
@@ -526,7 +520,7 @@ fun LibraryScreen(
                 }
 
                 if (searchQuery.isBlank()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -562,7 +556,7 @@ fun LibraryScreen(
                     }
 
                     if (favoriteSongs.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
+                        item {
                             Column {
                                 Text("Favorite Tracks", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -599,7 +593,7 @@ fun LibraryScreen(
                     }
 
                     if (history.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
+                        item {
                             Column {
                                 Text("Recently Played", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -637,7 +631,7 @@ fun LibraryScreen(
                 }
 
                 // All Songs Header with Sort Menu
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
