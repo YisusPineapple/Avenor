@@ -33,25 +33,35 @@ import javax.swing.JFileChooser
  * Provides a responsive, desktop-optimized layout supporting local library,
  * queue management, and hardware DSP indicators connected to VLCJ via DesktopPlaybackController.
  */
-fun main() = application {
-    val windowState = rememberWindowState(width = 1100.dp, height = 750.dp)
-    val controller = remember { DesktopPlaybackController() }
-
-    DisposableEffect(controller) {
-        onDispose {
-            controller.release()
-        }
+fun main() {
+    try {
+        javax.swing.UIManager.setLookAndFeel(
+            javax.swing.UIManager.getSystemLookAndFeelClassName()
+        )
+    } catch (_: Throwable) {
+        // Si el L&F del sistema no está disponible, continuar con el default.
     }
 
-    Window(
-        onCloseRequest = {
-            controller.release()
-            exitApplication()
-        },
-        title = "Avenor - Local Audiophile Music Player",
-        state = windowState
-    ) {
-        AvenorDesktopApp(controller = controller)
+    application {
+        val windowState = rememberWindowState(width = 1100.dp, height = 750.dp)
+        val controller = remember { DesktopPlaybackController() }
+
+        DisposableEffect(controller) {
+            onDispose {
+                controller.release()
+            }
+        }
+
+        Window(
+            onCloseRequest = {
+                controller.release()
+                exitApplication()
+            },
+            title = "Avenor - Local Audiophile Music Player",
+            state = windowState
+        ) {
+            AvenorDesktopApp(controller = controller)
+        }
     }
 }
 

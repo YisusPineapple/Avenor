@@ -134,7 +134,7 @@ class DesktopPlaybackController : AvenorPlaybackController {
         var factory: MediaPlayerFactory? = null
         var component: AudioMediaPlayerComponent? = null
         try {
-            factory = MediaPlayerFactory("--no-video")
+            factory = MediaPlayerFactory("--no-video", "--quiet")
             component = AudioMediaPlayerComponent(factory)
             component.mediaPlayer().events().addMediaPlayerEventListener(eventListener)
             _vlcAvailability.value = VlcAvailability.Available
